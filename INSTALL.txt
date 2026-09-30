@@ -1,17 +1,10 @@
-MEDIAFLOW RPC — QUICK INSTALL
+MediaFlow RPC Option 2 v3
 
-1) Install extension:
-   Chrome: chrome://extensions/
-   Edge:   edge://extensions/
-   Enable Developer mode -> Load unpacked -> choose the "extension" folder.
+1. Exit any old MediaFlow RPC tray app.
+2. Load the extension folder as an unpacked Chrome/Edge extension.
+3. Run tray\Run-MediaFlow-RPC.bat.
+4. Start Discord desktop.
+5. Open/refresh https://alexgodly.github.io/MediaFlow/
+6. Open http://127.0.0.1:17372/status
 
-2) Run:
-   tray\Run-MediaFlow-RPC.bat
-
-3) First run only:
-   Paste your Discord MediaFlow application's Application ID.
-
-4) Open normally:
-   https://alexgodly.github.io/MediaFlow/
-
-The hosted website itself does NOT need to be modified.
+Healthy status: Extension connections > 0, Discord ready: true, Last SET_ACTIVITY has a time.

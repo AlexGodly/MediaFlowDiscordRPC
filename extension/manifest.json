@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reads MediaFlow activity from alexgodly.github.io and relays it locally to the MediaFlow RPC tray companion.",
   "minimum_chrome_version": "116",
   "permissions": [

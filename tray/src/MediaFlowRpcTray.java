@@ -174,6 +174,10 @@ public final class MediaFlowRpcTray {
         settings.addActionListener(e -> EventQueue.invokeLater(() -> showSettings(false)));
         menu.add(settings);
 
+        MenuItem diagnostics = new MenuItem("Open Diagnostics");
+        diagnostics.addActionListener(e -> openUrl("http://127.0.0.1:" + BRIDGE_PORT + "/status"));
+        menu.add(diagnostics);
+
         MenuItem reconnect = new MenuItem("Reconnect Discord");
         reconnect.addActionListener(e -> {
             if (discord != null) discord.reconnect();
@@ -296,6 +300,9 @@ public final class MediaFlowRpcTray {
         private Thread acceptThread;
         private final AtomicInteger clients = new AtomicInteger();
         private java.util.function.Consumer<String> statusListener = s -> {};
+        private volatile String lastPresenceDetails = "";
+        private volatile String lastPresenceState = "";
+        private volatile long lastPresenceAt = 0L;
 
         LocalBridge(int port, DiscordIpc discord) {
             this.port = port;
@@ -355,6 +362,33 @@ public final class MediaFlowRpcTray {
 
                 if ("/health".equals(hs.path)) {
                     byte[] body = "MediaFlow RPC bridge is running".getBytes(StandardCharsets.UTF_8);
+                    String response = "HTTP/1.1 200 OK\r\n" +
+                            "Content-Type: text/plain; charset=utf-8\r\n" +
+                            "Cache-Control: no-store\r\n" +
+                            "Content-Length: " + body.length + "\r\n" +
+                            "Connection: close\r\n\r\n";
+                    out.write(response.getBytes(StandardCharsets.US_ASCII));
+                    out.write(body);
+                    out.flush();
+                    return;
+                }
+
+                if ("/status".equals(hs.path)) {
+                    String bodyText = "MediaFlow RPC diagnostics\n" +
+                            "=========================\n" +
+                            "Bridge: RUNNING\n" +
+                            "Extension connections: " + clients.get() + "\n" +
+                            "Last MediaFlow activity: " + (lastPresenceAt > 0 ? new java.util.Date(lastPresenceAt) : "never") + "\n" +
+                            "Details: " + (lastPresenceDetails.isBlank() ? "(none)" : lastPresenceDetails) + "\n" +
+                            "State: " + (lastPresenceState.isBlank() ? "(none)" : lastPresenceState) + "\n\n" +
+                            "Discord ready: " + discord.isReady() + "\n" +
+                            "Discord status: " + discord.diagnosticStatus() + "\n" +
+                            "Discord Application ID: " + discord.diagnosticClientIdMasked() + "\n" +
+                            "Discord READY at: " + (discord.diagnosticLastReadyAt() > 0 ? new java.util.Date(discord.diagnosticLastReadyAt()) : "never") + "\n" +
+                            "Last SET_ACTIVITY at: " + (discord.diagnosticLastActivitySentAt() > 0 ? new java.util.Date(discord.diagnosticLastActivitySentAt()) : "never") + "\n" +
+                            "Last Discord error: " + (discord.diagnosticError().isBlank() ? "(none)" : discord.diagnosticError()) + "\n" +
+                            "Last Discord message: " + (discord.diagnosticMessage().isBlank() ? "(none)" : discord.diagnosticMessage()) + "\n";
+                    byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
                     String response = "HTTP/1.1 200 OK\r\n" +
                             "Content-Type: text/plain; charset=utf-8\r\n" +
                             "Cache-Control: no-store\r\n" +
@@ -434,9 +468,13 @@ public final class MediaFlowRpcTray {
             try {
                 String details = decodeBase64(parts[2]);
                 String state = decodeBase64(parts[3]);
+                lastPresenceDetails = details;
+                lastPresenceState = state;
+                lastPresenceAt = System.currentTimeMillis();
                 Presence p = new Presence(details, state);
                 discord.setPresence(p);
                 statusListener.accept(details);
+                log("MediaFlow presence received: " + details + " | " + state);
             } catch (Exception ignored) {}
         }
 
@@ -579,6 +617,23 @@ public final class MediaFlowRpcTray {
         private Thread loopThread;
         private final Object writeLock = new Object();
         private java.util.function.Consumer<String> statusListener = s -> {};
+        private volatile String lastStatus = "Not connected";
+        private volatile String lastDiscordMessage = "";
+        private volatile String lastError = "";
+        private volatile long lastActivitySentAt = 0L;
+        private volatile long lastReadyAt = 0L;
+
+        boolean isReady() { return ready; }
+        String diagnosticStatus() { return lastStatus; }
+        String diagnosticMessage() { return lastDiscordMessage; }
+        String diagnosticError() { return lastError; }
+        long diagnosticLastActivitySentAt() { return lastActivitySentAt; }
+        long diagnosticLastReadyAt() { return lastReadyAt; }
+        String diagnosticClientIdMasked() {
+            String id = clientId == null ? "" : clientId.trim();
+            if (id.length() < 8) return id.isEmpty() ? "(not set)" : id;
+            return id.substring(0, 4) + "…" + id.substring(id.length()-4);
+        }
 
         void setStatusListener(java.util.function.Consumer<String> listener) {
             statusListener = listener == null ? s -> {} : listener;
@@ -629,7 +684,8 @@ public final class MediaFlowRpcTray {
                 }
 
                 try {
-                    statusListener.accept("Connecting to Discord");
+                    lastStatus = "Connecting to Discord";
+                    statusListener.accept(lastStatus);
                     log("Connecting to Discord IPC");
                     RandomAccessFile connected = connectPipe();
                     pipe = connected;
@@ -641,13 +697,16 @@ public final class MediaFlowRpcTray {
                     readLoop(connected);
                 } catch (Exception ex) {
                     ready = false;
+                    lastStatus = "Discord IPC connection failed";
+                    lastError = String.valueOf(ex);
                     log("Discord IPC connection failed", ex);
                 } finally {
                     closePipe();
                 }
 
                 if (running) {
-                    statusListener.accept("Waiting for Discord");
+                    lastStatus = "Waiting for Discord";
+                    statusListener.accept(lastStatus);
                     sleep(2200);
                 }
             }
@@ -685,18 +744,28 @@ public final class MediaFlowRpcTray {
                 if (opcode != 1) continue;
 
                 String msg = new String(body, StandardCharsets.UTF_8);
+                lastDiscordMessage = msg.length() > 2000 ? msg.substring(0, 2000) + "…" : msg;
 
-                if (msg.contains("\"evt\":\"READY\"") || msg.contains("\"evt\": \"READY\"")) {
+                if (msg.contains("\"READY\"")) {
                     ready = true;
-                    statusListener.accept("Discord connected");
+                    lastReadyAt = System.currentTimeMillis();
+                    lastStatus = "Discord connected";
+                    lastError = "";
+                    statusListener.accept(lastStatus);
                     log("Discord IPC READY");
                     Presence p = presence;
                     if (p != null) sendPresence(p);
                 }
 
-                if (msg.contains("\"evt\":\"ERROR\"") || msg.contains("\"code\":4000")) {
-                    statusListener.accept("Discord RPC error — check Application ID");
+                if (msg.contains("\"evt\":\"ERROR\"") || msg.contains("\"evt\": \"ERROR\"") || msg.contains("\"code\":4000")) {
+                    lastStatus = "Discord RPC error";
+                    lastError = lastDiscordMessage;
+                    statusListener.accept("Discord RPC error — check diagnostics");
                     log("Discord returned RPC error: " + msg);
+                }
+
+                if (msg.contains("\"cmd\":\"SET_ACTIVITY\"") || msg.contains("\"cmd\": \"SET_ACTIVITY\"")) {
+                    log("Discord acknowledged SET_ACTIVITY: " + (msg.length() > 1000 ? msg.substring(0,1000) + "…" : msg));
                 }
             }
         }
@@ -709,6 +778,7 @@ public final class MediaFlowRpcTray {
 
             String activity =
                     "{" +
+                    "\"name\":\"MediaFlow\"," +
                     "\"type\":0," +
                     "\"details\":\"" + json(details) + "\"," +
                     "\"state\":\"" + json(state) + "\"," +
@@ -720,6 +790,9 @@ public final class MediaFlowRpcTray {
                     "}";
 
             sendActivityJson(activity);
+            lastActivitySentAt = System.currentTimeMillis();
+            lastStatus = "Presence sent to Discord";
+            log("SET_ACTIVITY sent: " + details + " | " + state);
         }
 
         private void sendActivityJson(String activityJson) throws IOException {
@@ -745,8 +818,10 @@ public final class MediaFlowRpcTray {
             header.putInt(payload.length);
 
             synchronized (writeLock) {
-                raf.write(header.array());
-                raf.write(payload);
+                byte[] frame = new byte[8 + payload.length];
+                System.arraycopy(header.array(), 0, frame, 0, 8);
+                System.arraycopy(payload, 0, frame, 8, payload.length);
+                raf.write(frame);
             }
         }
 

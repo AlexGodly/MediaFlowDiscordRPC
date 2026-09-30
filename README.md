@@ -1,110 +1,62 @@
-# MediaFlow Discord RPC — Browser Extension Edition
+# MediaFlow Discord RPC — Option 2 v3
 
-This is the **Option 2** setup. Your hosted MediaFlow website stays completely unchanged:
+This edition does **not modify the hosted MediaFlow website**.
 
-`https://alexgodly.github.io/MediaFlow/`
+It contains:
 
-The system has two local parts:
+- `extension/` — unpacked Chrome / Edge extension for `https://alexgodly.github.io/MediaFlow/`
+- `tray/` — local Windows tray companion that talks to Discord Desktop RPC
 
-1. **Browser extension** — reads the live MediaFlow state from the existing hosted page.
-2. **MediaFlow RPC tray companion** — receives only the finished activity text over `127.0.0.1` and sends it to Discord Rich Presence.
+## Important v3 fix
 
-No MediaFlow HTML replacement is required.
+v3 fixes the Windows Discord IPC write format. Discord's pipe protocol expects each frame (8-byte header + JSON payload) to be written as one pipe message. The previous build wrote the header and JSON separately, which can let the local browser bridge work while Discord never accepts the RPC handshake/activity.
 
-## RPC mapping
+v3 also adds a live diagnostics page:
 
-- Dashboard: `Watching/Reading <recommended title>` + streak, level, and Episode/Chapter/Issue progress when a known total exists.
-- Library: `Browsing Library` + `<count> titles`.
-- Order: `Organizing Personal Order` + `<count> titles`.
-- Library History / History: `Checking History` + streak and level.
-- Batch Log: `Logging batches` + `<count> titles`.
-- Statistics: `Checking stats` + streak and level.
-- Profile / About / Settings / Old System: `In Settings` + streak and level.
-- No Discord RPC buttons are added.
+`http://127.0.0.1:17372/status`
 
-Discord currently exposes two custom text lines beneath the application name, so Dashboard combines streak/level and progress on the second line.
+It shows whether:
 
-## 1. Install the browser extension once
+- the local bridge is running;
+- the browser extension is connected;
+- MediaFlow activity has actually reached the tray app;
+- Discord IPC reached READY;
+- a `SET_ACTIVITY` was sent;
+- Discord returned an error.
 
-### Chrome
+## Install / update
 
-1. Open `chrome://extensions/`.
-2. Turn on **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the `extension` folder from this package.
+1. **Exit the old MediaFlow RPC tray app first.** Right-click its tray icon → `Exit`. Only one copy can use port 17372.
+2. Extract this v3 package.
+3. Open `chrome://extensions/` or `edge://extensions/`.
+4. Remove the old MediaFlow RPC extension, or use **Load unpacked** and select this package's `extension` folder. If you replace the files in-place, press **Reload** on the extension.
+5. Run `tray\Run-MediaFlow-RPC.bat`.
+6. Make sure Discord **desktop** is running.
+7. Open MediaFlow normally: `https://alexgodly.github.io/MediaFlow/`
+8. Refresh the MediaFlow tab once.
+9. Open `http://127.0.0.1:17372/status`.
 
-### Microsoft Edge
+A healthy result should eventually show something like:
 
-1. Open `edge://extensions/`.
-2. Turn on **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the `extension` folder from this package.
+- `Extension connections: 1`
+- `Details: Browsing Library` (or your current MediaFlow activity)
+- `Discord ready: true`
+- `Discord status: Presence sent to Discord`
+- `Last SET_ACTIVITY at: ...`
+- `Last Discord error: (none)`
 
-The extension has no popup and no settings window. It only runs on:
+## Discord application
 
-`https://alexgodly.github.io/MediaFlow/*`
+Use the Application ID from your Discord Developer Portal application named **MediaFlow**.
 
-## 2. Run the tray companion
+Upload the included 1024x1024 image to **Rich Presence Assets** with the asset key exactly:
 
-Open the `tray` folder and run:
-
-`Run-MediaFlow-RPC.bat`
-
-It uses `javaw`, so there is no console window. The companion lives in the Windows notification tray.
-
-### First run only: Discord Application ID
-
-The tray companion asks for a Discord Application ID. Create a Discord Developer application named **MediaFlow**, copy its Application ID, and paste it into the prompt.
-
-Use `tray/mediaflow.png` as the Discord application's icon if you want the MediaFlow artwork to appear as the application image.
+`mediaflow`
 
 No bot token, client secret, OAuth login, or RPC buttons are used.
 
-## Optional: build a normal portable Windows EXE
+## If Discord still doesn't display it
 
-Run:
+Run `tray\Diagnose-MediaFlow-RPC.bat` or open `/status` and check which stage is failing.
 
-`tray/Build-Windows-EXE.bat`
-
-A full JDK 17+ with `jpackage` is required. Your JDK 24 installation is suitable.
-
-The finished program will be created at:
-
-`tray/dist/MediaFlow RPC/MediaFlow RPC.exe`
-
-The app image includes its own Java runtime, so once built you can run the EXE directly without the BAT/JAR workflow.
-
-## Privacy / networking
-
-- The extension reads MediaFlow state only on the exact GitHub Pages MediaFlow URL.
-- It sends only the rendered RPC strings to the tray companion.
-- Browser-to-tray traffic stays on loopback: `127.0.0.1:17372`.
-- The tray companion talks to the locally running Discord desktop client through Discord IPC.
-- There is no remote MediaFlow RPC server.
-
-## Normal daily use
-
-After the one-time extension install and Discord Application ID setup:
-
-1. Launch Discord.
-2. Launch the MediaFlow RPC tray companion.
-3. Use `https://alexgodly.github.io/MediaFlow/` normally.
-
-The Rich Presence follows MediaFlow automatically. Closing/navigating away from the MediaFlow tab clears it.
-
-## Discord Rich Presence artwork
-Upload `tray/mediaflow-discord-1024.png` under Discord Developer Portal → Rich Presence → Art Assets and keep its asset key exactly `mediaflow`. The tray companion references that key as the large Rich Presence image.
-
-## If the extension says `ERR_CONNECTION_REFUSED`
-
-That specific error means the browser extension is installed and trying to connect, but the Windows tray companion is not listening on `127.0.0.1:17372`.
-
-Use the updated `tray/Run-MediaFlow-RPC.bat`. It now verifies the bridge after launch. You can also run `tray/Diagnose-MediaFlow-RPC.bat`.
-
-When the companion is healthy, opening this address in a browser should show:
-
-`http://127.0.0.1:17372/health`
-
-Expected text: `MediaFlow RPC bridge is running`.
-
-The detailed tray log is stored at `%APPDATA%\MediaFlow RPC\MediaFlowRPC.log`.
+If `/status` says `Discord ready: true` and a recent `Last SET_ACTIVITY` is shown with no Discord error, check Discord **User Settings → Activity Privacy** and make sure activity sharing is enabled. Discord can receive Rich Presence successfully while the client is configured not to display/share activities.

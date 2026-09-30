@@ -29,13 +29,18 @@ echo ------------------------------------------------------------
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try {(Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:17372/health).Content} catch {Write-Host ('FAILED: ' + $_.Exception.Message)}"
 echo.
 
-echo [5] Running Java processes
+echo [5] Live RPC status
+echo ------------------------------------------------------------
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try {(Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:17372/status).Content} catch {Write-Host ('FAILED: ' + $_.Exception.Message)}"
+echo.
+
+echo [6] Running Java processes
 echo ------------------------------------------------------------
 tasklist | findstr /I "java.exe javaw.exe"
 if errorlevel 1 echo No Java/javaw process found.
 echo.
 
-echo [6] Saved Discord Application ID
+echo [7] Saved Discord Application ID
 echo ------------------------------------------------------------
 if exist "%APPDATA%\MediaFlow RPC\config.properties" (
   type "%APPDATA%\MediaFlow RPC\config.properties" | findstr /I "discordClientId"
@@ -44,7 +49,7 @@ if exist "%APPDATA%\MediaFlow RPC\config.properties" (
 )
 echo.
 
-echo [7] MediaFlow RPC log
+echo [8] MediaFlow RPC log
 echo ------------------------------------------------------------
 if exist "%APPDATA%\MediaFlow RPC\MediaFlowRPC.log" (
   powershell -NoProfile -Command "Get-Content -Path $env:APPDATA+'\MediaFlow RPC\MediaFlowRPC.log' -Tail 40"
