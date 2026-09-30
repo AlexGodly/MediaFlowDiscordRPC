@@ -15,8 +15,8 @@ function utf8Base64(value) {
 }
 
 function wireFor(payload) {
-  if (!payload || payload.kind !== 'presence') return 'MF1|C';
-  return `MF1|P|${utf8Base64(payload.details)}|${utf8Base64(payload.state)}`;
+  if (!payload || payload.kind !== 'presence') return 'MF2|C';
+  return `MF2|P|${utf8Base64(payload.details)}|${utf8Base64(payload.state)}|${utf8Base64(payload.view || '')}|${utf8Base64(payload.heading || '')}|${utf8Base64(payload.source || '')}`;
 }
 
 async function postWire(wire) {
@@ -50,11 +50,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (!lastByTab.delete(tabId)) return;
   chrome.tabs.query({ url: 'https://alexgodly.github.io/MediaFlow/*' }).then((tabs) => {
-    if (!tabs.length) postWire('MF1|C');
-  }).catch(() => postWire('MF1|C'));
+    if (!tabs.length) postWire('MF2|C');
+  }).catch(() => postWire('MF2|C'));
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url || changeInfo.url.startsWith(MEDIAFLOW_PREFIX)) return;
-  if (lastByTab.delete(tabId)) postWire('MF1|C');
+  if (lastByTab.delete(tabId)) postWire('MF2|C');
 });

@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V6__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V6__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V7__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V7__ = true;
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -14,6 +14,10 @@
   let cachedLibraryById = new Map();
   let cachedLibraryByTitle = new Map();
   let publishTimer = null;
+  let navViewHint = '';
+  let navViewHintAt = 0;
+  let lastDetectedHeading = '';
+  let lastDetectedSource = '';
 
   const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
   const num = (value, fallback = 0) => {
@@ -80,41 +84,81 @@
     return cachedState;
   }
 
+  function mapViewText(value) {
+    const t = clean(value).toLowerCase();
+    if (!t) return '';
+    if (t.includes('library history')) return 'libraryhistory';
+    if (t === 'today' || t === 'dashboard' || t.includes('dashboard')) return 'dashboard';
+    if (t === 'library' || t.startsWith('library ')) return 'library';
+    if (t === 'history' || (t.includes('history') && !t.includes('library'))) return 'history';
+    if (t.includes('batch')) return 'batch';
+    if (t.includes('statistic') || t === 'stats' || t.includes('stats')) return 'stats';
+    if (t === 'order' || t.includes('personal order')) return 'order';
+    if (t.includes('profile') || t.includes('setting') || t.includes('about') || t.includes('old system')) return 'settings';
+    return '';
+  }
+
+  function visibleText(el) {
+    if (!el) return '';
+    try {
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return '';
+    } catch (_) {}
+    return clean(el.textContent);
+  }
+
   function detectView() {
     const root = document.getElementById('view-root');
-    if (!root) return '';
+    if (!root) { lastDetectedHeading=''; lastDetectedSource='no-root'; return ''; }
 
-    if (root.querySelector('.v138-order-view')) return 'order';
-    if (root.querySelector('.v161-about')) return 'settings';
-    if (root.querySelector('.v153-old-system')) return 'settings';
+    // Strong page-specific markers first. These are not affected by sidebar
+    // re-ordering or the active-nav class and therefore work with dynamic pages.
+    if (root.querySelector('.v138-order-view')) { lastDetectedHeading='Order'; lastDetectedSource='order-marker'; return 'order'; }
+    if (root.querySelector('.v161-about-hero, .v161-about-grid, .v161-faq')) { lastDetectedHeading='About'; lastDetectedSource='about-marker'; return 'settings'; }
+    if (root.querySelector('.v153-old-system')) { lastDetectedHeading='Old System'; lastDetectedSource='old-system-marker'; return 'settings'; }
 
-    const title = clean(root.querySelector('.view-title')?.textContent).toLowerCase();
-    const h1 = clean(root.querySelector('.view-head h1, h1')?.textContent).toLowerCase();
-    const heading = title || h1;
+    const candidates = [
+      ...root.querySelectorAll('.view-head .view-title, .view-head h1, .view-head h2'),
+      ...root.querySelectorAll(':scope > .fade-in > .view-title, :scope > .fade-in > h1')
+    ];
+    for (const el of candidates) {
+      const text = visibleText(el);
+      const mapped = mapViewText(text);
+      if (mapped) {
+        lastDetectedHeading = text;
+        lastDetectedSource = 'dom-heading';
+        return mapped;
+      }
+    }
 
-    if (heading === 'today') return 'dashboard';
-    if (heading === 'library') return 'library';
-    if (heading === 'library history') return 'libraryhistory';
-    if (heading === 'history') return 'history';
-    if (heading === 'batch log') return 'batch';
-    if (heading === 'statistics') return 'stats';
-    if (heading === 'profile settings') return 'settings';
-    if (heading === 'settings') return 'settings';
-    if (heading === 'order') return 'order';
+    // Extra DOM markers for pages whose heading can briefly disappear during
+    // a MediaFlow rerender.
+    if (root.querySelector('.lib-toolbar, .mf-batchbar .mf-select')) { lastDetectedHeading='Library'; lastDetectedSource='library-marker'; return 'library'; }
+    if (root.querySelector('.batch-log-list, .batch-log-meta')) { lastDetectedHeading='Batch Log'; lastDetectedSource='batch-marker'; return 'batch'; }
+    if (root.querySelector('.stats-level-card, .sat-grid, .record-list .record-row')) { lastDetectedHeading='Statistics'; lastDetectedSource='stats-marker'; return 'stats'; }
+    if (root.querySelector('.mf-activity') && /library\s+history/i.test(clean(root.textContent))) { lastDetectedHeading='Library History'; lastDetectedSource='library-history-marker'; return 'libraryhistory'; }
+    if (root.querySelector('.profile-card, #profile-name, #profile-email')) { lastDetectedHeading='Profile Settings'; lastDetectedSource='profile-marker'; return 'settings'; }
 
-    // Navigation fallback. This is mainly useful during a brief rerender where
-    // the view root has not yet received its heading.
+    // A navigation click is captured before MediaFlow redraws the dynamic page.
+    // Keep that hint briefly so a transient empty #view-root cannot fall back
+    // to Dashboard.
+    if (navViewHint && Date.now() - navViewHintAt < 2500) {
+      lastDetectedHeading = navViewHint;
+      lastDetectedSource = 'navigation-click';
+      return navViewHint;
+    }
+
     const active = document.querySelector('.nav-item.active, .mobile-more-item.active, .mtab.active');
-    const activeText = clean(active?.textContent).toLowerCase();
-    if (activeText.includes('library history')) return 'libraryhistory';
-    if (activeText === 'dashboard') return 'dashboard';
-    if (activeText === 'library') return 'library';
-    if (activeText === 'history') return 'history';
-    if (activeText.includes('batch')) return 'batch';
-    if (activeText.includes('stat')) return 'stats';
-    if (activeText === 'order') return 'order';
-    if (activeText.includes('profile') || activeText.includes('settings') || activeText.includes('about') || activeText.includes('old system')) return 'settings';
+    const activeText = visibleText(active);
+    const activeMapped = mapViewText(activeText);
+    if (activeMapped) {
+      lastDetectedHeading = activeText;
+      lastDetectedSource = 'active-nav';
+      return activeMapped;
+    }
 
+    lastDetectedHeading = '';
+    lastDetectedSource = 'fallback';
     return 'dashboard';
   }
 
@@ -262,29 +306,30 @@
 
     const state = readCachedState();
     const view = detectView();
+    const debug = { view, heading: lastDetectedHeading, source: lastDetectedSource };
     const count = libraryCount(state);
     const countText = count > 0 ? `${count.toLocaleString()} titles` : 'MediaFlow Library';
 
     switch (view) {
       case 'dashboard': {
         const p = dashboardPresence(state);
-        return { kind: 'presence', ...p };
+        return { kind: 'presence', ...p, ...debug };
       }
       case 'library':
-        return { kind: 'presence', details: 'Browsing Library', state: countText };
+        return { kind: 'presence', details: 'Browsing Library', state: countText, ...debug };
       case 'order':
-        return { kind: 'presence', details: 'Organizing Personal Order', state: countText };
+        return { kind: 'presence', details: 'Organizing Personal Order', state: countText, ...debug };
       case 'libraryhistory':
       case 'history':
-        return { kind: 'presence', details: 'Checking History', state: streakLevelLine(state) };
+        return { kind: 'presence', details: 'Checking History', state: streakLevelLine(state), ...debug };
       case 'batch':
-        return { kind: 'presence', details: 'Logging batches', state: countText };
+        return { kind: 'presence', details: 'Logging batches', state: countText, ...debug };
       case 'stats':
-        return { kind: 'presence', details: 'Checking stats', state: streakLevelLine(state) };
+        return { kind: 'presence', details: 'Checking stats', state: streakLevelLine(state), ...debug };
       case 'settings':
-        return { kind: 'presence', details: 'In Settings', state: streakLevelLine(state) };
+        return { kind: 'presence', details: 'In Settings', state: streakLevelLine(state), ...debug };
       default:
-        return { kind: 'presence', details: 'Using MediaFlow', state: streakLevelLine(state) };
+        return { kind: 'presence', details: 'Using MediaFlow', state: streakLevelLine(state), ...debug };
     }
   }
 
@@ -312,6 +357,24 @@
     clearTimeout(publishTimer);
     publishTimer = setTimeout(() => publish(true), 120);
   }
+
+  // Capture MediaFlow's dynamic navigation before its click handler redraws
+  // #view-root. Parsing the inline setView/mobileNav target is more reliable
+  // than trusting the active class because MediaFlow allows navigation re-ordering.
+  document.addEventListener('click', (event) => {
+    const el = event.target?.closest?.('.nav-item, .mtab, .mobile-more-item');
+    if (!el) return;
+    const onclick = el.getAttribute('onclick') || '';
+    const match = onclick.match(/(?:setView|mobileNav)\(\s*['"]([^'"]+)['"]\s*\)/i);
+    const raw = match?.[1] || visibleText(el);
+    const mapped = mapViewText(raw);
+    if (!mapped) return;
+    navViewHint = mapped;
+    navViewHintAt = Date.now();
+    setTimeout(() => publish(true), 40);
+    setTimeout(() => publish(true), 250);
+    setTimeout(() => publish(true), 700);
+  }, true);
 
   // MediaFlow redraws #view-root whenever the active page or recommendation
   // changes. Observe the rendered UI instead of relying on its private closure.

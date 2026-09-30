@@ -1,45 +1,52 @@
-# MediaFlow Discord RPC — Option 2 v6
+# MediaFlow Discord RPC — Option 2 v7
 
-This version does **not** modify the hosted MediaFlow site.
+This edition does **not modify the hosted MediaFlow website**. It uses:
 
-## What changed in v6
+`MediaFlow website -> Chrome/Edge extension -> localhost tray companion -> Discord desktop`
 
-MediaFlow v172 keeps its live `S` application state inside a private IIFE closure. Earlier extension versions tried to read that variable from the page and therefore kept sending `clear` even though the tray and Discord connection were healthy.
+## What v7 fixes
 
-v6 no longer tries to access MediaFlow's private JavaScript closure. The browser extension now reads:
+- Fixes dynamic-page detection. The extension now reads the current rendered page **and captures MediaFlow navigation clicks**, so Library, Order, History, Batch Log, Statistics, Profile/About/Settings no longer get stuck as Dashboard.
+- Fixes the Discord IPC write deadlock that could leave `Last SET_ACTIVITY at: never` even though Discord said `READY`. After the Discord READY handshake, one dedicated thread owns the Windows named-pipe writes.
+- Fixes **Exit**. Clicking **Exit** removes the tray icon and force-terminates the JVM, so it does not remain in Task Manager.
+- Adds a single-instance lock and startup cleanup for older `MediaFlowRPC.jar` processes.
+- Adds `Kill-MediaFlow-RPC.bat` for one-time cleanup of old v6-or-earlier processes.
+- `/status` now shows `Detected view`, `Detected heading`, and `View source`.
 
-- the rendered MediaFlow page to identify the current view and visible recommendation metadata;
-- MediaFlow's own `mf_cloud_cache_v1` / account recovery cache for Library count, the current task and title progress;
-- the rendered sidebar for the exact visible day streak and level.
+## Clean install (important after v6)
 
-The extension then sends the finished Rich Presence text to the local tray companion over HTTP on `127.0.0.1:17372`.
-
-## Install / upgrade
-
-1. Exit any old MediaFlow RPC tray companion.
-2. In `chrome://extensions/` or `edge://extensions/`, remove every older **MediaFlow Discord RPC Bridge** entry.
-3. Extract this v6 package.
+1. Run `tray\Kill-MediaFlow-RPC.bat` once.
+2. In `chrome://extensions/` or `edge://extensions/`, remove every old **MediaFlow Discord RPC Bridge**.
+3. Load unpacked: `extension` from this v7 folder.
 4. Run `tray\Run-MediaFlow-RPC.bat`.
-5. Load the `extension` folder with **Load unpacked**.
-6. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
-7. Open `http://127.0.0.1:17372/status`.
+5. Open/refresh `https://alexgodly.github.io/MediaFlow/`.
+6. Check `http://127.0.0.1:17372/status`.
 
-A working v6 status should show `Last MediaFlow activity` and `Last SET_ACTIVITY at` with timestamps instead of `never`.
+A healthy result should show, for example:
+
+```
+Last MediaFlow activity: ...
+Details: Browsing Library
+Detected view: library
+Detected heading: Library
+Last SET_ACTIVITY at: ...
+Discord status: Presence sent to Discord
+```
 
 ## Presence mapping
 
-- Dashboard: `Watching/Reading <recommended title>` + streak, level and Episode/Chapter/Issue progress when available.
-- Library: `Browsing Library` + total title count.
-- Order: `Organizing Personal Order` + total title count.
-- Library History / History: `Checking History` + streak and level.
-- Batch Log: `Logging batches` + total title count.
-- Statistics: `Checking stats` + streak and level.
-- Profile settings / About / Settings / Old System: `In Settings` + streak and level.
+- Dashboard: `Watching/Reading <recommended title>` and streak/level + Episode/Chapter/Issue progress when available.
+- Library: `Browsing Library` + title count.
+- Order: `Organizing Personal Order` + title count.
+- Library History / History: `Checking History` + streak/level.
+- Batch Log: `Logging batches` + title count.
+- Statistics: `Checking stats` + streak/level.
+- Profile / About / Settings / Old System: `In Settings` + streak/level.
 
-No Discord buttons are added.
+No RPC buttons are added.
 
-## Diagnostics
+## Discord asset
 
-- Health: `http://127.0.0.1:17372/health`
-- Full status: `http://127.0.0.1:17372/status`
-- Log: `%APPDATA%\MediaFlow RPC\MediaFlowRPC.log`
+Upload `tray\mediaflow-discord-1024.png` to the application's Rich Presence assets with the asset key exactly:
+
+`mediaflow`

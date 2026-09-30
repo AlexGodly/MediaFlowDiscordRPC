@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.4.0",
-  "description": "Reads MediaFlow's rendered page plus its own local recovery cache and relays Discord Rich Presence to the local tray companion.",
+  "version": "1.5.0",
+  "description": "Reads MediaFlow's dynamic rendered views plus its local recovery cache and relays Discord Rich Presence to the local tray companion.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs"],
   "host_permissions": [
