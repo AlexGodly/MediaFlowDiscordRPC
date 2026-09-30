@@ -1,62 +1,45 @@
-# MediaFlow Discord RPC — Option 2 v3
+# MediaFlow Discord RPC — Option 2 v4
 
-This edition does **not modify the hosted MediaFlow website**.
+This version leaves the hosted MediaFlow website unchanged.
 
-It contains:
+Architecture:
 
-- `extension/` — unpacked Chrome / Edge extension for `https://alexgodly.github.io/MediaFlow/`
-- `tray/` — local Windows tray companion that talks to Discord Desktop RPC
+`MediaFlow website -> Chrome/Edge extension -> local tray bridge -> Discord desktop IPC`
 
-## Important v3 fix
+## IMPORTANT WHEN UPGRADING
 
-v3 fixes the Windows Discord IPC write format. Discord's pipe protocol expects each frame (8-byte header + JSON payload) to be written as one pipe message. The previous build wrote the header and JSON separately, which can let the local browser bridge work while Discord never accepts the RPC handshake/activity.
+Remove/disable every older **MediaFlow Discord RPC Bridge** unpacked extension first. Then load only the `extension` folder from this v4 package. Different unpacked folders can remain installed as separate extensions, which causes duplicate local bridge connections.
 
-v3 also adds a live diagnostics page:
+## Setup
 
-`http://127.0.0.1:17372/status`
+1. Exit any old MediaFlow RPC tray process.
+2. Start `tray/Run-MediaFlow-RPC.bat`.
+3. Confirm `http://127.0.0.1:17372/health` says the bridge is running.
+4. In Chrome/Edge extensions, remove all previous MediaFlow RPC extensions.
+5. Enable Developer mode, choose **Load unpacked**, and select this package's `extension` folder.
+6. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
+7. Check `http://127.0.0.1:17372/status`.
 
-It shows whether:
-
-- the local bridge is running;
-- the browser extension is connected;
-- MediaFlow activity has actually reached the tray app;
-- Discord IPC reached READY;
-- a `SET_ACTIVITY` was sent;
-- Discord returned an error.
-
-## Install / update
-
-1. **Exit the old MediaFlow RPC tray app first.** Right-click its tray icon → `Exit`. Only one copy can use port 17372.
-2. Extract this v3 package.
-3. Open `chrome://extensions/` or `edge://extensions/`.
-4. Remove the old MediaFlow RPC extension, or use **Load unpacked** and select this package's `extension` folder. If you replace the files in-place, press **Reload** on the extension.
-5. Run `tray\Run-MediaFlow-RPC.bat`.
-6. Make sure Discord **desktop** is running.
-7. Open MediaFlow normally: `https://alexgodly.github.io/MediaFlow/`
-8. Refresh the MediaFlow tab once.
-9. Open `http://127.0.0.1:17372/status`.
-
-A healthy result should eventually show something like:
+A healthy connection should show:
 
 - `Extension connections: 1`
-- `Details: Browsing Library` (or your current MediaFlow activity)
+- `Last MediaFlow activity:` with a real timestamp
+- `Details:` and `State:` populated
 - `Discord ready: true`
-- `Discord status: Presence sent to Discord`
-- `Last SET_ACTIVITY at: ...`
-- `Last Discord error: (none)`
+- `Last SET_ACTIVITY at:` with a real timestamp
 
-## Discord application
+## Why v4 exists
 
-Use the Application ID from your Discord Developer Portal application named **MediaFlow**.
+MediaFlow stores its main runtime state in a top-level lexical `let S`. That state is not a `window.S` property. Earlier extension builds connected to the local bridge but could fail to read MediaFlow itself. v4 loads a real page-context hook (`page-hook.js`) through the extension's isolated relay, so it can read MediaFlow's live `S` state without modifying the hosted website.
 
-Upload the included 1024x1024 image to **Rich Presence Assets** with the asset key exactly:
+## RPC mapping
 
-`mediaflow`
+- Dashboard: `Watching/Reading <recommended title>` + streak/level + progress where available
+- Library: `Browsing Library` + title count
+- Order: `Organizing Personal Order` + title count
+- Library History / History: `Checking History` + streak/level
+- Batch Log: `Logging batches` + title count
+- Statistics: `Checking stats` + streak/level
+- Profile / About / Settings: `In Settings` + streak/level
 
-No bot token, client secret, OAuth login, or RPC buttons are used.
-
-## If Discord still doesn't display it
-
-Run `tray\Diagnose-MediaFlow-RPC.bat` or open `/status` and check which stage is failing.
-
-If `/status` says `Discord ready: true` and a recent `Last SET_ACTIVITY` is shown with no Discord error, check Discord **User Settings → Activity Privacy** and make sure activity sharing is enabled. Discord can receive Rich Presence successfully while the client is configured not to display/share activities.
+No RPC buttons are added.
