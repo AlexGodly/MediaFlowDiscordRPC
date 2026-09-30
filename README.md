@@ -1,40 +1,53 @@
-# MediaFlow Discord RPC — Option 2 v4
+# MediaFlow Discord RPC — Option 2 v5
 
 This version leaves the hosted MediaFlow website unchanged.
 
 Architecture:
 
-`MediaFlow website -> Chrome/Edge extension -> local tray bridge -> Discord desktop IPC`
+`MediaFlow website -> Chrome/Edge extension -> local HTTP relay -> tray companion -> Discord desktop IPC`
+
+## What changed in v5
+
+v5 removes the fragile long-lived Manifest V3 WebSocket dependency between the extension and the tray app.
+
+The extension now:
+
+- reads MediaFlow in Chrome's `MAIN` execution world;
+- sends the finished presence state to the extension service worker;
+- uses short local HTTP POST requests to `127.0.0.1:17372/presence`;
+- does not need a persistent extension WebSocket connection.
+
+The tray companion still supports the old WebSocket endpoint as a fallback, but v5 does not rely on it.
 
 ## IMPORTANT WHEN UPGRADING
 
-Remove/disable every older **MediaFlow Discord RPC Bridge** unpacked extension first. Then load only the `extension` folder from this v4 package. Different unpacked folders can remain installed as separate extensions, which causes duplicate local bridge connections.
+1. Exit the old MediaFlow RPC tray process.
+2. Remove every older **MediaFlow Discord RPC Bridge** unpacked extension.
+3. Use the v5 tray companion and the v5 extension together.
 
 ## Setup
 
-1. Exit any old MediaFlow RPC tray process.
-2. Start `tray/Run-MediaFlow-RPC.bat`.
-3. Confirm `http://127.0.0.1:17372/health` says the bridge is running.
-4. In Chrome/Edge extensions, remove all previous MediaFlow RPC extensions.
-5. Enable Developer mode, choose **Load unpacked**, and select this package's `extension` folder.
-6. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
-7. Check `http://127.0.0.1:17372/status`.
+1. Run `tray/Run-MediaFlow-RPC.bat`.
+2. Confirm `http://127.0.0.1:17372/health` says `MediaFlow RPC bridge is running`.
+3. Open Chrome/Edge extensions, enable Developer mode, choose **Load unpacked**, and select this package's `extension` folder.
+4. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
+5. Open `http://127.0.0.1:17372/status`.
 
-A healthy connection should show:
+A healthy v5 status should show:
 
-- `Extension connections: 1`
+- `Relay transport: HTTP POST (v5)`
+- `HTTP presence requests:` greater than 0
+- `Last extension contact:` with a real timestamp
 - `Last MediaFlow activity:` with a real timestamp
-- `Details:` and `State:` populated
+- populated `Details:` and `State:`
 - `Discord ready: true`
 - `Last SET_ACTIVITY at:` with a real timestamp
 
-## Why v4 exists
-
-MediaFlow stores its main runtime state in a top-level lexical `let S`. That state is not a `window.S` property. Earlier extension builds connected to the local bridge but could fail to read MediaFlow itself. v4 loads a real page-context hook (`page-hook.js`) through the extension's isolated relay, so it can read MediaFlow's live `S` state without modifying the hosted website.
+`Active legacy WebSocket clients: 0` is NORMAL in v5.
 
 ## RPC mapping
 
-- Dashboard: `Watching/Reading <recommended title>` + streak/level + progress where available
+- Dashboard: `Watching/Reading <recommended title>` + streak/level + Episode/Chapter/Issue progress where available
 - Library: `Browsing Library` + title count
 - Order: `Organizing Personal Order` + title count
 - Library History / History: `Checking History` + streak/level

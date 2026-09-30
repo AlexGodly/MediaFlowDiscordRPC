@@ -1,57 +1,31 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY__) return;
-  window.__MEDIAFLOW_RPC_RELAY__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V5__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V5__ = true;
 
-  let hookReady = false;
-  let injectAttempts = 0;
+  let lastPayload = null;
 
-  function injectPageHook() {
-    if (hookReady || injectAttempts >= 5) return;
-    injectAttempts++;
-
-    const old = document.getElementById('mediaflow-rpc-page-hook-loader');
-    if (old) old.remove();
-
-    const script = document.createElement('script');
-    script.id = 'mediaflow-rpc-page-hook-loader';
-    script.src = chrome.runtime.getURL('page-hook.js');
-    script.async = false;
-    script.dataset.attempt = String(injectAttempts);
-    script.onload = () => script.remove();
-    script.onerror = () => {
-      script.remove();
-      setTimeout(injectPageHook, 1000);
-    };
-
-    (document.head || document.documentElement).appendChild(script);
+  function forward(payload) {
+    lastPayload = payload || { kind: 'clear' };
+    try {
+      chrome.runtime.sendMessage({
+        type: 'MEDIAFLOW_RPC_STATE',
+        payload: lastPayload
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== 'mediaflow-rpc-page') return;
-
-    if (data.type === 'hook-ready') {
-      hookReady = true;
-      window.postMessage({ source: 'mediaflow-rpc-relay', type: 'ready' }, '*');
-      return;
-    }
-
-    if (!data.payload) return;
-
-    try {
-      chrome.runtime.sendMessage({
-        type: 'MEDIAFLOW_RPC_STATE',
-        payload: data.payload
-      });
-    } catch (_) {}
+    if (!data || data.source !== 'mediaflow-rpc-page-v5' || !data.payload) return;
+    forward(data.payload);
   });
 
-  injectPageHook();
-  setTimeout(() => { if (!hookReady) injectPageHook(); }, 1200);
-  setTimeout(() => { if (!hookReady) injectPageHook(); }, 3000);
+  // Ask the MAIN-world reader for an immediate snapshot once this relay is ready.
+  window.postMessage({ source: 'mediaflow-rpc-relay-v5', type: 'ready' }, '*');
 
-  window.postMessage({ source: 'mediaflow-rpc-relay', type: 'ready' }, '*');
+  // Best-effort clear when the MediaFlow tab navigates away or closes.
+  window.addEventListener('pagehide', () => forward({ kind: 'clear' }), { capture: true });
 })();

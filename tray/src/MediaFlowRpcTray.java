@@ -290,7 +290,10 @@ public final class MediaFlowRpcTray {
     }
 
     // ---------------------------------------------------------------------
-    // Local browser -> tray bridge (loopback-only WebSocket, no libraries)
+    // Local browser -> tray bridge.
+    // v5 uses short HTTP POSTs from the extension service worker instead of
+    // depending on a long-lived MV3 WebSocket. The WebSocket endpoint remains
+    // as a backwards-compatible fallback for older extension builds.
     // ---------------------------------------------------------------------
     static final class LocalBridge {
         private final int port;
@@ -299,10 +302,12 @@ public final class MediaFlowRpcTray {
         private ServerSocket server;
         private Thread acceptThread;
         private final AtomicInteger clients = new AtomicInteger();
-        private java.util.function.Consumer<String> statusListener = s -> {};
+        private final AtomicInteger httpRequests = new AtomicInteger();
+        private java.util.function.Consumer<String> statusListener = x -> {};
         private volatile String lastPresenceDetails = "";
         private volatile String lastPresenceState = "";
         private volatile long lastPresenceAt = 0L;
+        private volatile long lastExtensionContactAt = 0L;
 
         LocalBridge(int port, DiscordIpc discord) {
             this.port = port;
@@ -310,7 +315,7 @@ public final class MediaFlowRpcTray {
         }
 
         void setStatusListener(java.util.function.Consumer<String> listener) {
-            statusListener = listener == null ? s -> {} : listener;
+            statusListener = listener == null ? x -> {} : listener;
         }
 
         void start() {
@@ -330,7 +335,7 @@ public final class MediaFlowRpcTray {
                 server = new ServerSocket();
                 server.setReuseAddress(true);
                 server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port));
-                log("Bridge listening on ws://127.0.0.1:" + port + "/mediaflow");
+                log("Bridge listening on http://127.0.0.1:" + port + "/presence and ws://127.0.0.1:" + port + "/mediaflow");
                 statusListener.accept("Bridge ready — waiting for MediaFlow");
             } catch (IOException ex) {
                 log("Bridge bind failed on 127.0.0.1:" + port, ex);
@@ -342,7 +347,7 @@ public final class MediaFlowRpcTray {
                 try {
                     Socket socket = server.accept();
                     socket.setTcpNoDelay(true);
-                    Thread t = new Thread(() -> handleClient(socket), "MediaFlow-RPC-WebSocket");
+                    Thread t = new Thread(() -> handleClient(socket), "MediaFlow-RPC-LocalBridge");
                     t.setDaemon(true);
                     t.start();
                 } catch (IOException ex) {
@@ -357,27 +362,34 @@ public final class MediaFlowRpcTray {
                 BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
                 BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream());
 
-                HttpHandshake hs = readHandshake(in);
-                if (hs == null) return;
+                HttpRequest req = readRequest(in);
+                if (req == null) return;
 
-                if ("/health".equals(hs.path)) {
-                    byte[] body = "MediaFlow RPC bridge is running".getBytes(StandardCharsets.UTF_8);
-                    String response = "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: text/plain; charset=utf-8\r\n" +
-                            "Cache-Control: no-store\r\n" +
-                            "Content-Length: " + body.length + "\r\n" +
-                            "Connection: close\r\n\r\n";
-                    out.write(response.getBytes(StandardCharsets.US_ASCII));
-                    out.write(body);
-                    out.flush();
+                if ("OPTIONS".equals(req.method) && "/presence".equals(req.path)) {
+                    if (!allowedOrigin(req.origin)) {
+                        writeHttpError(out, 403, "Forbidden", req.origin);
+                        return;
+                    }
+                    writeHttpResponse(out, 204, "No Content", "", req.origin,
+                            "Access-Control-Allow-Methods: POST, OPTIONS\r\n" +
+                            "Access-Control-Allow-Headers: Content-Type\r\n" +
+                            "Access-Control-Max-Age: 86400\r\n");
                     return;
                 }
 
-                if ("/status".equals(hs.path)) {
+                if ("GET".equals(req.method) && "/health".equals(req.path)) {
+                    writeHttpResponse(out, 200, "OK", "MediaFlow RPC bridge is running", req.origin, "");
+                    return;
+                }
+
+                if ("GET".equals(req.method) && "/status".equals(req.path)) {
                     String bodyText = "MediaFlow RPC diagnostics\n" +
                             "=========================\n" +
                             "Bridge: RUNNING\n" +
-                            "Extension connections: " + clients.get() + "\n" +
+                            "Relay transport: HTTP POST (v5)\n" +
+                            "HTTP presence requests: " + httpRequests.get() + "\n" +
+                            "Active legacy WebSocket clients: " + clients.get() + "\n" +
+                            "Last extension contact: " + (lastExtensionContactAt > 0 ? new java.util.Date(lastExtensionContactAt) : "never") + "\n" +
                             "Last MediaFlow activity: " + (lastPresenceAt > 0 ? new java.util.Date(lastPresenceAt) : "never") + "\n" +
                             "Details: " + (lastPresenceDetails.isBlank() ? "(none)" : lastPresenceDetails) + "\n" +
                             "State: " + (lastPresenceState.isBlank() ? "(none)" : lastPresenceState) + "\n\n" +
@@ -388,26 +400,33 @@ public final class MediaFlowRpcTray {
                             "Last SET_ACTIVITY at: " + (discord.diagnosticLastActivitySentAt() > 0 ? new java.util.Date(discord.diagnosticLastActivitySentAt()) : "never") + "\n" +
                             "Last Discord error: " + (discord.diagnosticError().isBlank() ? "(none)" : discord.diagnosticError()) + "\n" +
                             "Last Discord message: " + (discord.diagnosticMessage().isBlank() ? "(none)" : discord.diagnosticMessage()) + "\n";
-                    byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
-                    String response = "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: text/plain; charset=utf-8\r\n" +
-                            "Cache-Control: no-store\r\n" +
-                            "Content-Length: " + body.length + "\r\n" +
-                            "Connection: close\r\n\r\n";
-                    out.write(response.getBytes(StandardCharsets.US_ASCII));
-                    out.write(body);
-                    out.flush();
+                    writeHttpResponse(out, 200, "OK", bodyText, req.origin, "");
                     return;
                 }
 
-                if (!"/mediaflow".equals(hs.path) || !allowedOrigin(hs.origin)) {
-                    writeHttpError(out, 403, "Forbidden");
+                // v5 primary transport: one short local POST per activity update.
+                if ("POST".equals(req.method) && "/presence".equals(req.path)) {
+                    if (!allowedOrigin(req.origin)) {
+                        writeHttpError(out, 403, "Forbidden", req.origin);
+                        return;
+                    }
+                    lastExtensionContactAt = System.currentTimeMillis();
+                    httpRequests.incrementAndGet();
+                    String message = new String(req.body, StandardCharsets.UTF_8);
+                    handleMessage(message);
+                    writeHttpResponse(out, 200, "OK", "OK", req.origin, "");
                     return;
                 }
 
-                String key = hs.headers.get("sec-websocket-key");
+                // Backwards-compatible WebSocket transport.
+                if (!"GET".equals(req.method) || !"/mediaflow".equals(req.path) || !allowedOrigin(req.origin)) {
+                    writeHttpError(out, 403, "Forbidden", req.origin);
+                    return;
+                }
+
+                String key = req.headers.get("sec-websocket-key");
                 if (key == null || key.isBlank()) {
-                    writeHttpError(out, 400, "Bad Request");
+                    writeHttpError(out, 400, "Bad Request", req.origin);
                     return;
                 }
 
@@ -423,42 +442,43 @@ public final class MediaFlowRpcTray {
 
                 clients.incrementAndGet();
                 counted = true;
+                lastExtensionContactAt = System.currentTimeMillis();
                 statusListener.accept("Browser extension connected");
-                log("Browser extension connected");
+                log("Legacy WebSocket extension connected");
 
                 while (running && !socket.isClosed()) {
                     WsFrame frame = readFrame(in);
                     if (frame == null) break;
 
-                    if (frame.opcode == 0x8) break; // close
-                    if (frame.opcode == 0x9) { // ping
+                    if (frame.opcode == 0x8) break;
+                    if (frame.opcode == 0x9) {
                         writeFrame(out, 0xA, frame.payload);
                         continue;
                     }
                     if (frame.opcode != 0x1) continue;
 
+                    lastExtensionContactAt = System.currentTimeMillis();
                     String message = new String(frame.payload, StandardCharsets.UTF_8);
                     handleMessage(message);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                log("Local bridge client error", ex);
             } finally {
                 if (counted) {
-                    int remaining = Math.max(0, clients.decrementAndGet());
-                    if (remaining == 0) {
-                        discord.clearPresence();
-                        statusListener.accept("Waiting for MediaFlow");
-                        log("Browser extension disconnected");
-                    }
+                    clients.updateAndGet(v -> Math.max(0, v - 1));
+                    log("Legacy WebSocket extension disconnected");
                 }
             }
         }
 
         private void handleMessage(String message) {
             if (message == null) return;
+            if ("MF1|K".equals(message)) return;
 
             if ("MF1|C".equals(message)) {
                 discord.clearPresence();
-                statusListener.accept("MediaFlow open — no active account");
+                statusListener.accept("Waiting for MediaFlow activity");
+                log("MediaFlow presence cleared");
                 return;
             }
 
@@ -475,11 +495,13 @@ public final class MediaFlowRpcTray {
                 discord.setPresence(p);
                 statusListener.accept(details);
                 log("MediaFlow presence received: " + details + " | " + state);
-            } catch (Exception ignored) {}
+            } catch (Exception ex) {
+                log("Could not decode MediaFlow presence", ex);
+            }
         }
 
-        private static String decodeBase64(String s) {
-            return new String(Base64.getDecoder().decode(s), StandardCharsets.UTF_8);
+        private static String decodeBase64(String value) {
+            return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
         }
 
         private static boolean allowedOrigin(String origin) {
@@ -487,11 +509,12 @@ public final class MediaFlowRpcTray {
             String o = origin.toLowerCase(Locale.ROOT);
             return o.equals("https://alexgodly.github.io")
                     || o.startsWith("chrome-extension://")
+                    || o.startsWith("edge-extension://")
                     || o.startsWith("http://127.0.0.1")
                     || o.startsWith("http://localhost");
         }
 
-        private static HttpHandshake readHandshake(InputStream in) throws IOException {
+        private static HttpRequest readRequest(InputStream in) throws IOException {
             ByteArrayOutputStream raw = new ByteArrayOutputStream();
             int state = 0;
             while (raw.size() < 16384) {
@@ -509,8 +532,10 @@ public final class MediaFlowRpcTray {
             String[] lines = text.split("\\r\\n");
             if (lines.length == 0) return null;
 
-            String[] req = lines[0].split(" ");
-            if (req.length < 2 || !"GET".equals(req[0])) return null;
+            String[] first = lines[0].split(" ");
+            if (first.length < 2) return null;
+            String method = first[0].trim().toUpperCase(Locale.ROOT);
+            String path = first[1].trim();
 
             Map<String,String> headers = new HashMap<>();
             for (int i = 1; i < lines.length; i++) {
@@ -520,7 +545,18 @@ public final class MediaFlowRpcTray {
                             lines[i].substring(c+1).trim());
                 }
             }
-            return new HttpHandshake(req[1], headers.get("origin"), headers);
+
+            int length = 0;
+            String contentLength = headers.get("content-length");
+            if (contentLength != null && !contentLength.isBlank()) {
+                try { length = Integer.parseInt(contentLength.trim()); }
+                catch (NumberFormatException ex) { throw new IOException("Bad Content-Length"); }
+            }
+            if (length < 0 || length > 1_048_576) throw new IOException("HTTP body too large");
+            byte[] body = length == 0 ? new byte[0] : in.readNBytes(length);
+            if (body.length != length) throw new EOFException();
+
+            return new HttpRequest(method, path, headers.get("origin"), headers, body);
         }
 
         private static String websocketAccept(String key) throws Exception {
@@ -530,13 +566,26 @@ public final class MediaFlowRpcTray {
             return Base64.getEncoder().encodeToString(digest);
         }
 
-        private static void writeHttpError(OutputStream out, int code, String text) throws IOException {
-            String body = text + "\n";
-            String r = "HTTP/1.1 " + code + " " + text + "\r\n" +
-                    "Content-Type: text/plain\r\n" +
-                    "Content-Length: " + body.getBytes(StandardCharsets.UTF_8).length + "\r\n" +
-                    "Connection: close\r\n\r\n" + body;
-            out.write(r.getBytes(StandardCharsets.UTF_8));
+        private static void writeHttpError(OutputStream out, int code, String text, String origin) throws IOException {
+            writeHttpResponse(out, code, text, text + "\n", origin, "");
+        }
+
+        private static void writeHttpResponse(OutputStream out, int code, String status, String body,
+                                              String origin, String extraHeaders) throws IOException {
+            byte[] bytes = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8);
+            StringBuilder r = new StringBuilder();
+            r.append("HTTP/1.1 ").append(code).append(' ').append(status).append("\r\n");
+            r.append("Content-Type: text/plain; charset=utf-8\r\n");
+            r.append("Cache-Control: no-store\r\n");
+            if (origin != null && allowedOrigin(origin)) {
+                r.append("Access-Control-Allow-Origin: ").append(origin).append("\r\n");
+                r.append("Vary: Origin\r\n");
+            }
+            if (extraHeaders != null) r.append(extraHeaders);
+            r.append("Content-Length: ").append(bytes.length).append("\r\n");
+            r.append("Connection: close\r\n\r\n");
+            out.write(r.toString().getBytes(StandardCharsets.US_ASCII));
+            if (bytes.length > 0) out.write(bytes);
             out.flush();
         }
 
@@ -593,15 +642,15 @@ public final class MediaFlowRpcTray {
                     out.write(len & 0xFF);
                 } else {
                     out.write(127);
-                    long l = len;
-                    for (int i=7;i>=0;i--) out.write((int)((l >>> (8*i)) & 0xFF));
+                    long value = len;
+                    for (int i=7;i>=0;i--) out.write((int)((value >>> (8*i)) & 0xFF));
                 }
                 if (len > 0) out.write(payload);
                 out.flush();
             }
         }
 
-        record HttpHandshake(String path, String origin, Map<String,String> headers) {}
+        record HttpRequest(String method, String path, String origin, Map<String,String> headers, byte[] body) {}
         record WsFrame(int opcode, byte[] payload) {}
     }
 
