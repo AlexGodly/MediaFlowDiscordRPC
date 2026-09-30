@@ -91,3 +91,20 @@ After the one-time extension install and Discord Application ID setup:
 3. Use `https://alexgodly.github.io/MediaFlow/` normally.
 
 The Rich Presence follows MediaFlow automatically. Closing/navigating away from the MediaFlow tab clears it.
+
+## Discord Rich Presence artwork
+Upload `tray/mediaflow-discord-1024.png` under Discord Developer Portal → Rich Presence → Art Assets and keep its asset key exactly `mediaflow`. The tray companion references that key as the large Rich Presence image.
+
+## If the extension says `ERR_CONNECTION_REFUSED`
+
+That specific error means the browser extension is installed and trying to connect, but the Windows tray companion is not listening on `127.0.0.1:17372`.
+
+Use the updated `tray/Run-MediaFlow-RPC.bat`. It now verifies the bridge after launch. You can also run `tray/Diagnose-MediaFlow-RPC.bat`.
+
+When the companion is healthy, opening this address in a browser should show:
+
+`http://127.0.0.1:17372/health`
+
+Expected text: `MediaFlow RPC bridge is running`.
+
+The detailed tray log is stored at `%APPDATA%\MediaFlow RPC\MediaFlowRPC.log`.

@@ -13,6 +13,8 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public final class MediaFlowRpcTray {
     private static final String APP_NAME = "MediaFlow RPC";
@@ -26,10 +28,25 @@ public final class MediaFlowRpcTray {
     private static Path configFile;
     private static DiscordIpc discord;
     private static LocalBridge bridge;
+    private static Path logFile;
+    private static final Object LOG_LOCK = new Object();
 
     public static void main(String[] args) {
         System.setProperty("java.awt.headless", "false");
+        try {
+            runMain(args);
+        } catch (Throwable t) {
+            try { log("FATAL startup error", t); } catch (Throwable ignored) {}
+            try {
+                JOptionPane.showMessageDialog(null,
+                        "MediaFlow RPC could not start.\n\n" + t +
+                        "\n\nSee the log in %APPDATA%\\MediaFlow RPC\\MediaFlowRPC.log",
+                        APP_NAME, JOptionPane.ERROR_MESSAGE);
+            } catch (Throwable ignored) {}
+        }
+    }
 
+    private static void runMain(String[] args) {
         if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
             JOptionPane.showMessageDialog(null,
                     "MediaFlow RPC is built for Windows.",
@@ -45,6 +62,7 @@ public final class MediaFlowRpcTray {
         }
 
         loadConfig();
+        log("Starting MediaFlow RPC " + System.getProperty("java.version") + " on " + System.getProperty("os.name"));
 
         try {
             initTray();
@@ -55,6 +73,7 @@ public final class MediaFlowRpcTray {
             return;
         }
 
+        log("Tray icon initialized");
         discord = new DiscordIpc();
         discord.setStatusListener(MediaFlowRpcTray::setTrayStatus);
         discord.setClientId(config.getProperty("discordClientId", "").trim());
@@ -64,7 +83,8 @@ public final class MediaFlowRpcTray {
         bridge.setStatusListener(MediaFlowRpcTray::setTrayStatus);
         bridge.start();
 
-        setTrayStatus("Waiting for MediaFlow");
+        setTrayStatus("Starting local bridge");
+        log("Local bridge thread started on 127.0.0.1:" + BRIDGE_PORT);
 
         String clientId = config.getProperty("discordClientId", "").trim();
         if (!validClientId(clientId)) {
@@ -79,6 +99,7 @@ public final class MediaFlowRpcTray {
         }
         configDir = Paths.get(appData, "MediaFlow RPC");
         configFile = configDir.resolve("config.properties");
+        logFile = configDir.resolve("MediaFlowRPC.log");
         config = new Properties();
 
         try {
@@ -89,6 +110,28 @@ public final class MediaFlowRpcTray {
                 }
             }
         } catch (IOException ignored) {}
+    }
+
+    private static void log(String message) {
+        log(message, null);
+    }
+
+    private static void log(String message, Throwable error) {
+        try {
+            if (configDir == null) {
+                String appData = System.getenv("APPDATA");
+                if (appData == null || appData.isBlank()) appData = System.getProperty("user.home", ".");
+                configDir = Paths.get(appData, "MediaFlow RPC");
+                logFile = configDir.resolve("MediaFlowRPC.log");
+            }
+            Files.createDirectories(configDir);
+            synchronized (LOG_LOCK) {
+                try (PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(logFile.toFile(), true)))) {
+                    out.println("[" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "] " + message);
+                    if (error != null) error.printStackTrace(out);
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static void saveConfig() {
@@ -280,7 +323,10 @@ public final class MediaFlowRpcTray {
                 server = new ServerSocket();
                 server.setReuseAddress(true);
                 server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port));
+                log("Bridge listening on ws://127.0.0.1:" + port + "/mediaflow");
+                statusListener.accept("Bridge ready — waiting for MediaFlow");
             } catch (IOException ex) {
+                log("Bridge bind failed on 127.0.0.1:" + port, ex);
                 statusListener.accept("Bridge error — port " + port + " unavailable");
                 return;
             }
@@ -305,7 +351,22 @@ public final class MediaFlowRpcTray {
                 BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream());
 
                 HttpHandshake hs = readHandshake(in);
-                if (hs == null || !"/mediaflow".equals(hs.path) || !allowedOrigin(hs.origin)) {
+                if (hs == null) return;
+
+                if ("/health".equals(hs.path)) {
+                    byte[] body = "MediaFlow RPC bridge is running".getBytes(StandardCharsets.UTF_8);
+                    String response = "HTTP/1.1 200 OK\r\n" +
+                            "Content-Type: text/plain; charset=utf-8\r\n" +
+                            "Cache-Control: no-store\r\n" +
+                            "Content-Length: " + body.length + "\r\n" +
+                            "Connection: close\r\n\r\n";
+                    out.write(response.getBytes(StandardCharsets.US_ASCII));
+                    out.write(body);
+                    out.flush();
+                    return;
+                }
+
+                if (!"/mediaflow".equals(hs.path) || !allowedOrigin(hs.origin)) {
                     writeHttpError(out, 403, "Forbidden");
                     return;
                 }
@@ -329,6 +390,7 @@ public final class MediaFlowRpcTray {
                 clients.incrementAndGet();
                 counted = true;
                 statusListener.accept("Browser extension connected");
+                log("Browser extension connected");
 
                 while (running && !socket.isClosed()) {
                     WsFrame frame = readFrame(in);
@@ -351,6 +413,7 @@ public final class MediaFlowRpcTray {
                     if (remaining == 0) {
                         discord.clearPresence();
                         statusListener.accept("Waiting for MediaFlow");
+                        log("Browser extension disconnected");
                     }
                 }
             }
@@ -567,6 +630,7 @@ public final class MediaFlowRpcTray {
 
                 try {
                     statusListener.accept("Connecting to Discord");
+                    log("Connecting to Discord IPC");
                     RandomAccessFile connected = connectPipe();
                     pipe = connected;
                     ready = false;
@@ -577,6 +641,7 @@ public final class MediaFlowRpcTray {
                     readLoop(connected);
                 } catch (Exception ex) {
                     ready = false;
+                    log("Discord IPC connection failed", ex);
                 } finally {
                     closePipe();
                 }
@@ -624,12 +689,14 @@ public final class MediaFlowRpcTray {
                 if (msg.contains("\"evt\":\"READY\"") || msg.contains("\"evt\": \"READY\"")) {
                     ready = true;
                     statusListener.accept("Discord connected");
+                    log("Discord IPC READY");
                     Presence p = presence;
                     if (p != null) sendPresence(p);
                 }
 
                 if (msg.contains("\"evt\":\"ERROR\"") || msg.contains("\"code\":4000")) {
                     statusListener.accept("Discord RPC error — check Application ID");
+                    log("Discord returned RPC error: " + msg);
                 }
             }
         }
@@ -645,6 +712,10 @@ public final class MediaFlowRpcTray {
                     "\"type\":0," +
                     "\"details\":\"" + json(details) + "\"," +
                     "\"state\":\"" + json(state) + "\"," +
+                    "\"assets\":{" +
+                    "\"large_image\":\"mediaflow\"," +
+                    "\"large_text\":\"MediaFlow\"" +
+                    "}," +
                     "\"instance\":false" +
                     "}";
 
