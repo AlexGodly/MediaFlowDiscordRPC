@@ -386,7 +386,7 @@ public final class MediaFlowRpcTray {
                     String bodyText = "MediaFlow RPC diagnostics\n" +
                             "=========================\n" +
                             "Bridge: RUNNING\n" +
-                            "Relay transport: HTTP POST (v5)\n" +
+                            "Relay transport: HTTP POST (v6)\n" +
                             "HTTP presence requests: " + httpRequests.get() + "\n" +
                             "Active legacy WebSocket clients: " + clients.get() + "\n" +
                             "Last extension contact: " + (lastExtensionContactAt > 0 ? new java.util.Date(lastExtensionContactAt) : "never") + "\n" +

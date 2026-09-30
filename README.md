@@ -1,58 +1,45 @@
-# MediaFlow Discord RPC — Option 2 v5
+# MediaFlow Discord RPC — Option 2 v6
 
-This version leaves the hosted MediaFlow website unchanged.
+This version does **not** modify the hosted MediaFlow site.
 
-Architecture:
+## What changed in v6
 
-`MediaFlow website -> Chrome/Edge extension -> local HTTP relay -> tray companion -> Discord desktop IPC`
+MediaFlow v172 keeps its live `S` application state inside a private IIFE closure. Earlier extension versions tried to read that variable from the page and therefore kept sending `clear` even though the tray and Discord connection were healthy.
 
-## What changed in v5
+v6 no longer tries to access MediaFlow's private JavaScript closure. The browser extension now reads:
 
-v5 removes the fragile long-lived Manifest V3 WebSocket dependency between the extension and the tray app.
+- the rendered MediaFlow page to identify the current view and visible recommendation metadata;
+- MediaFlow's own `mf_cloud_cache_v1` / account recovery cache for Library count, the current task and title progress;
+- the rendered sidebar for the exact visible day streak and level.
 
-The extension now:
+The extension then sends the finished Rich Presence text to the local tray companion over HTTP on `127.0.0.1:17372`.
 
-- reads MediaFlow in Chrome's `MAIN` execution world;
-- sends the finished presence state to the extension service worker;
-- uses short local HTTP POST requests to `127.0.0.1:17372/presence`;
-- does not need a persistent extension WebSocket connection.
+## Install / upgrade
 
-The tray companion still supports the old WebSocket endpoint as a fallback, but v5 does not rely on it.
+1. Exit any old MediaFlow RPC tray companion.
+2. In `chrome://extensions/` or `edge://extensions/`, remove every older **MediaFlow Discord RPC Bridge** entry.
+3. Extract this v6 package.
+4. Run `tray\Run-MediaFlow-RPC.bat`.
+5. Load the `extension` folder with **Load unpacked**.
+6. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
+7. Open `http://127.0.0.1:17372/status`.
 
-## IMPORTANT WHEN UPGRADING
+A working v6 status should show `Last MediaFlow activity` and `Last SET_ACTIVITY at` with timestamps instead of `never`.
 
-1. Exit the old MediaFlow RPC tray process.
-2. Remove every older **MediaFlow Discord RPC Bridge** unpacked extension.
-3. Use the v5 tray companion and the v5 extension together.
+## Presence mapping
 
-## Setup
+- Dashboard: `Watching/Reading <recommended title>` + streak, level and Episode/Chapter/Issue progress when available.
+- Library: `Browsing Library` + total title count.
+- Order: `Organizing Personal Order` + total title count.
+- Library History / History: `Checking History` + streak and level.
+- Batch Log: `Logging batches` + total title count.
+- Statistics: `Checking stats` + streak and level.
+- Profile settings / About / Settings / Old System: `In Settings` + streak and level.
 
-1. Run `tray/Run-MediaFlow-RPC.bat`.
-2. Confirm `http://127.0.0.1:17372/health` says `MediaFlow RPC bridge is running`.
-3. Open Chrome/Edge extensions, enable Developer mode, choose **Load unpacked**, and select this package's `extension` folder.
-4. Open or hard-refresh `https://alexgodly.github.io/MediaFlow/`.
-5. Open `http://127.0.0.1:17372/status`.
+No Discord buttons are added.
 
-A healthy v5 status should show:
+## Diagnostics
 
-- `Relay transport: HTTP POST (v5)`
-- `HTTP presence requests:` greater than 0
-- `Last extension contact:` with a real timestamp
-- `Last MediaFlow activity:` with a real timestamp
-- populated `Details:` and `State:`
-- `Discord ready: true`
-- `Last SET_ACTIVITY at:` with a real timestamp
-
-`Active legacy WebSocket clients: 0` is NORMAL in v5.
-
-## RPC mapping
-
-- Dashboard: `Watching/Reading <recommended title>` + streak/level + Episode/Chapter/Issue progress where available
-- Library: `Browsing Library` + title count
-- Order: `Organizing Personal Order` + title count
-- Library History / History: `Checking History` + streak/level
-- Batch Log: `Logging batches` + title count
-- Statistics: `Checking stats` + streak/level
-- Profile / About / Settings: `In Settings` + streak/level
-
-No RPC buttons are added.
+- Health: `http://127.0.0.1:17372/health`
+- Full status: `http://127.0.0.1:17372/status`
+- Log: `%APPDATA%\MediaFlow RPC\MediaFlowRPC.log`

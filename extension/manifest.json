@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.3.0",
-  "description": "Reads live MediaFlow activity from alexgodly.github.io and relays it locally to the MediaFlow RPC tray companion.",
+  "version": "1.4.0",
+  "description": "Reads MediaFlow's rendered page plus its own local recovery cache and relays Discord Rich Presence to the local tray companion.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs"],
   "host_permissions": [
@@ -13,12 +13,6 @@
     "service_worker": "service-worker.js"
   },
   "content_scripts": [
-    {
-      "matches": ["https://alexgodly.github.io/MediaFlow/*"],
-      "js": ["page-reader.js"],
-      "run_at": "document_idle",
-      "world": "MAIN"
-    },
     {
       "matches": ["https://alexgodly.github.io/MediaFlow/*"],
       "js": ["relay.js"],
