@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V8__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V8__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V9__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V9__ = true;
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -19,7 +19,7 @@
   let lastDetectedHeading = '';
   let lastDetectedSource = '';
   let rememberedLibraryCount = 0;
-  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV8';
+  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV9';
 
   try {
     chrome.storage.local.get([LIBRARY_COUNT_STORAGE_KEY]).then(data => {
@@ -39,16 +39,25 @@
   }
 
   function selectCacheRaw() {
-    // MediaFlow v172 writes the complete current snapshot to this compatibility
-    // cache on normal saves/startup. Prefer it because it has no wrapper.
-    try {
-      const legacy = localStorage.getItem(LEGACY_CACHE_KEY);
-      if (legacy) return legacy;
-    } catch (_) {}
-
-    // Fallback to the account-scoped safety cache if the legacy key is absent.
+    // v9: choose the newest valid recovery snapshot instead of blindly trusting
+    // the legacy key. On very large libraries an old legacy snapshot can remain
+    // after localStorage quota errors, while the account-scoped cache may still
+    // contain newer task/settings/progress data.
     let bestRaw = null;
     let bestAt = -1;
+
+    try {
+      const legacyRaw = localStorage.getItem(LEGACY_CACHE_KEY);
+      if (legacyRaw) {
+        const legacy = parseJSON(legacyRaw);
+        if (legacy && typeof legacy === 'object') {
+          const at = num(legacy.savedAt, 0);
+          bestRaw = legacyRaw;
+          bestAt = at;
+        }
+      }
+    } catch (_) {}
+
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -64,6 +73,7 @@
         }
       }
     } catch (_) {}
+
     return bestRaw;
   }
 
@@ -103,7 +113,8 @@
     if (t.includes('batch')) return 'batch';
     if (t.includes('statistic') || t === 'stats' || t.includes('stats')) return 'stats';
     if (t === 'order' || t.includes('personal order')) return 'order';
-    if (t.includes('profile') || t.includes('setting') || t.includes('about') || t.includes('old system')) return 'settings';
+    if (t === 'oldsystem' || t.includes('old system')) return 'oldsystem';
+    if (t.includes('profile') || t.includes('setting') || t.includes('about')) return 'settings';
     return '';
   }
 
@@ -124,7 +135,7 @@
     // re-ordering or the active-nav class and therefore work with dynamic pages.
     if (root.querySelector('.v138-order-view')) { lastDetectedHeading='Order'; lastDetectedSource='order-marker'; return 'order'; }
     if (root.querySelector('.v161-about-hero, .v161-about-grid, .v161-faq')) { lastDetectedHeading='About'; lastDetectedSource='about-marker'; return 'settings'; }
-    if (root.querySelector('.v153-old-system')) { lastDetectedHeading='Old System'; lastDetectedSource='old-system-marker'; return 'settings'; }
+    if (root.querySelector('.v153-old-system')) { lastDetectedHeading='Old System'; lastDetectedSource='old-system-marker'; return 'oldsystem'; }
 
     const candidates = [
       ...root.querySelectorAll('.view-head .view-title, .view-head h1, .view-head h2'),
@@ -302,22 +313,74 @@
     return 0;
   }
 
-  function taskFromStateOrDOM(state) {
-    const task = state?.currentTask || null;
-    if (task && state?.sessionActive) return task;
+  function orderCountFromDOM() {
+    const root = document.getElementById('view-root');
+    if (!root) return 0;
+    const summary = root.querySelector('.v138-order-summary');
+    if (!summary) return 0;
+    const bold = clean(summary.querySelector('b')?.textContent);
+    const m = bold.match(/[\d,]+/);
+    return m ? Math.max(0, Number(m[0].replace(/,/g, '')) || 0) : 0;
+  }
 
+  function batchCountFromDOM() {
+    const root = document.getElementById('view-root');
+    if (!root) return 0;
+
+    // Count only rows where a Library title has actually been selected. Blank
+    // "Add title" rows are not titles being logged yet.
+    return root.querySelectorAll('.batch-log-list .batch-selected-title').length;
+  }
+
+  function titleCountText(count) {
+    const n = Math.max(0, Number(count) || 0);
+    return `${n.toLocaleString()} ${n === 1 ? 'title' : 'titles'}`;
+  }
+
+  function exactRecommendationFromDOM() {
     const hero = document.querySelector('#view-root .hero');
-    if (!hero) return null;
-    if (/start a session/i.test(clean(hero.textContent))) return null;
+    if (!hero) return { enabled: false, title: '', hero: null };
 
-    const title = clean(hero.querySelector('.hero-note b')?.textContent);
-    const amountText = clean(hero.querySelector('.hero-amount')?.textContent).toLowerCase();
+    const note = hero.querySelector('.hero-note');
+    const noteText = clean(note?.textContent);
+
+    // This text is rendered by MediaFlow only while the exact-title option is OFF.
+    if (/you choose the titles/i.test(noteText)) return { enabled: false, title: '', hero };
+
+    // This is rendered while the option is ON but no eligible title exists.
+    if (/no eligible title found/i.test(noteText)) return { enabled: true, title: '', hero };
+
+    // Both the plain and cover-forward recommendation cards contain this label.
+    if (/mediaflow recommends/i.test(noteText)) {
+      const title = clean(note?.querySelector('b')?.textContent);
+      return { enabled: true, title, hero };
+    }
+
+    return { enabled: false, title: '', hero };
+  }
+
+  function taskFromStateOrDOM(state) {
+    const exact = exactRecommendationFromDOM();
+    if (!exact.enabled || !exact.title) return null;
+
+    const amountText = clean(exact.hero?.querySelector('.hero-amount')?.textContent).toLowerCase();
     let unit = '';
     if (/episodes?/.test(amountText)) unit = 'episodes';
     else if (/chapters?/.test(amountText)) unit = 'chapters';
     else if (/issues?/.test(amountText)) unit = 'issues';
     else if (/movies?/.test(amountText)) unit = 'movies';
-    return title ? { title, unit } : null;
+
+    // Use the cached task only as metadata assistance (library id/unit), never as
+    // proof that exact recommendations are enabled. The live Dashboard DOM is
+    // authoritative for the setting and title.
+    const cachedTask = state?.currentTask || null;
+    return {
+      title: exact.title,
+      unit: unit || clean(cachedTask?.unit || ''),
+      libraryId: cachedTask?.title && clean(cachedTask.title).toLowerCase() === exact.title.toLowerCase()
+        ? cachedTask.libraryId
+        : null
+    };
   }
 
   function libraryItemFor(task) {
@@ -345,22 +408,27 @@
 
   function dashboardPresence(state) {
     const task = taskFromStateOrDOM(state);
+
+    // Exact-title recommendations are OFF (or there is no eligible recommended
+    // title): keep the normal Dashboard presence.
     if (!task) return { details: 'On Dashboard', state: streakLevelLine(state) };
 
     const item = libraryItemFor(task);
-    const unit = clean(task.unit || '');
+    const unit = clean(task.unit || item?.unit || '');
     const title = clean(task.title || item?.title || '');
     if (!title) return { details: 'On Dashboard', state: streakLevelLine(state) };
 
-    const details = `${readingUnit(unit) ? 'Reading' : 'Watching'} ${title}`;
-    let stateLine = streakLevelLine(state);
+    let details = `${readingUnit(unit) ? 'Reading' : 'Watching'} ${title}`;
     const word = progressWord(unit);
     if (word && item) {
       const progress = Math.max(0, num(item.progress, 0));
       const total = Math.max(0, num(item.total, 0));
-      if (total > 0) stateLine += ` · ${word} ${progress.toLocaleString()}/${total.toLocaleString()}`;
+      if (total > 0) details += ` · ${word} ${progress.toLocaleString()}/${total.toLocaleString()}`;
     }
-    return { details, state: stateLine };
+
+    // Discord Rich Presence exposes only details + state beneath the app name.
+    // Keep the user's streak/level as its own complete line.
+    return { details, state: streakLevelLine(state) };
   }
 
   function buildPresence() {
@@ -370,8 +438,8 @@
     const state = readCachedState();
     const view = detectView();
     const debug = { view, heading: lastDetectedHeading, source: lastDetectedSource };
-    const count = libraryCount(state);
-    const countText = count > 0 ? `${count.toLocaleString()} titles` : 'MediaFlow Library';
+    const libraryTotal = libraryCount(state);
+    const libraryCountText = titleCountText(libraryTotal);
 
     switch (view) {
       case 'dashboard': {
@@ -379,16 +447,18 @@
         return { kind: 'presence', ...p, ...debug };
       }
       case 'library':
-        return { kind: 'presence', details: 'Browsing Library', state: countText, ...debug };
+        return { kind: 'presence', details: 'Browsing Library', state: libraryCountText, ...debug };
       case 'order':
-        return { kind: 'presence', details: 'Organizing Personal Order', state: countText, ...debug };
+        return { kind: 'presence', details: 'Organizing Personal Order', state: titleCountText(orderCountFromDOM()), ...debug };
       case 'libraryhistory':
       case 'history':
         return { kind: 'presence', details: 'Checking History', state: streakLevelLine(state), ...debug };
       case 'batch':
-        return { kind: 'presence', details: 'Logging batches', state: countText, ...debug };
+        return { kind: 'presence', details: 'Logging batches', state: titleCountText(batchCountFromDOM()), ...debug };
       case 'stats':
         return { kind: 'presence', details: 'Checking stats', state: streakLevelLine(state), ...debug };
+      case 'oldsystem':
+        return { kind: 'presence', details: 'In Old System', state: streakLevelLine(state), ...debug };
       case 'settings':
         return { kind: 'presence', details: 'In Settings', state: streakLevelLine(state), ...debug };
       default:

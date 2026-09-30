@@ -1,7 +1,15 @@
-MediaFlow RPC v8
+MediaFlow RPC v9
 
-1. Remove the older MediaFlow RPC browser extension.
-2. Load unpacked: extension
-3. Run tray\Run-MediaFlow-RPC.bat
-4. Refresh MediaFlow.
-5. Open Library once to capture the exact live Library total.
+1. Exit the old MediaFlow RPC tray process.
+2. Remove the older MediaFlow RPC browser extension.
+3. Load unpacked: extension
+4. Run tray\Run-MediaFlow-RPC.bat
+5. Hard-refresh https://alexgodly.github.io/MediaFlow/
+
+Changes:
+- Old System gets its own RPC status.
+- Library count = total Library titles.
+- Order count = ordered titles only.
+- Batch Log count = selected titles being logged only.
+- Dashboard recommended title appears only when MediaFlow exact-title recommendations are enabled.
+- Streak/Level stays on its own complete Discord text line.

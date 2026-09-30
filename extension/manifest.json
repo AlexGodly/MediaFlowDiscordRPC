@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
   "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.6.0",
-  "description": "Reads MediaFlow's live dynamic UI first, remembers the verified Library count, and relays Discord Rich Presence to the local tray companion.",
+  "version": "1.7.0",
+  "description": "MediaFlow Discord RPC bridge with page-specific counts, Old System presence, and exact-title Dashboard presence.",
   "minimum_chrome_version": "116",
-  "permissions": ["tabs", "storage"],
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
   "host_permissions": [
     "https://alexgodly.github.io/MediaFlow/*",
     "http://127.0.0.1/*"
@@ -14,8 +17,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://alexgodly.github.io/MediaFlow/*"],
-      "js": ["relay.js"],
+      "matches": [
+        "https://alexgodly.github.io/MediaFlow/*"
+      ],
+      "js": [
+        "relay.js"
+      ],
       "run_at": "document_idle",
       "world": "ISOLATED"
     }
