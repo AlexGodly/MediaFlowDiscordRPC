@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V7__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V7__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V8__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V8__ = true;
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -18,6 +18,15 @@
   let navViewHintAt = 0;
   let lastDetectedHeading = '';
   let lastDetectedSource = '';
+  let rememberedLibraryCount = 0;
+  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV8';
+
+  try {
+    chrome.storage.local.get([LIBRARY_COUNT_STORAGE_KEY]).then(data => {
+      const n = Number(data?.[LIBRARY_COUNT_STORAGE_KEY]);
+      if (Number.isFinite(n) && n >= 0) rememberedLibraryCount = n;
+    }).catch(() => {});
+  } catch (_) {}
 
   const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
   const num = (value, fallback = 0) => {
@@ -221,22 +230,76 @@
     return `MediaFlow 🔥 ${streak.toLocaleString()} day streak · Level ${level.toLocaleString()}`;
   }
 
-  function libraryCount(state) {
-    if (Array.isArray(state?.library)) return state.library.length;
+  function rememberLibraryCount(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    rememberedLibraryCount = Math.floor(n);
+    try { chrome.storage.local.set({ [LIBRARY_COUNT_STORAGE_KEY]: rememberedLibraryCount }).catch(() => {}); } catch (_) {}
+    return rememberedLibraryCount;
+  }
 
-    // Visible Library fallback if a huge local safety cache could not be stored.
+  function liveLibraryCountFromDOM() {
     const root = document.getElementById('view-root');
-    const labels = root ? [...root.querySelectorAll('.section-label')] : [];
-    for (const el of labels) {
+    if (!root) return null;
+
+    // Library page: this is generated directly from S.library.length.
+    for (const el of root.querySelectorAll('.section-label')) {
       const m = clean(el.textContent).match(/^TITLES\s*\(([\d,]+)\)/i);
-      if (m) return Number(m[1].replace(/,/g, '')) || 0;
+      if (m) return Number(m[1].replace(/,/g, ''));
     }
 
-    // Profile / Statistics also expose the Library total in the DOM.
-    const bodyText = clean(root?.textContent);
-    let m = bodyText.match(/([\d,]+)\s+Library titles/i);
-    if (!m) m = bodyText.match(/Library titles\s+([\d,]+)/i);
-    return m ? (Number(m[1].replace(/,/g, '')) || 0) : 0;
+    // Profile hero exposes the complete Library count.
+    for (const el of root.querySelectorAll('.profile-stat-hero .pill')) {
+      const m = clean(el.textContent).match(/^([\d,]+)\s+titles?$/i);
+      if (m) return Number(m[1].replace(/,/g, ''));
+    }
+
+    // Statistics -> Library Health -> Library titles.
+    for (const row of root.querySelectorAll('.record-row')) {
+      const key = clean(row.querySelector('.k')?.textContent);
+      if (!/^Library titles$/i.test(key)) continue;
+      const m = clean(row.querySelector('.v')?.textContent).match(/([\d,]+)/);
+      if (m) return Number(m[1].replace(/,/g, ''));
+    }
+
+    // Order can reveal the exact total without private state when its picker is
+    // unfiltered: un-ordered matches + already ordered titles = full Library.
+    if (root.querySelector('.v138-order-view')) {
+      const search = clean(root.querySelector('.v138-picker-search')?.value || '');
+      const catSummary = clean(root.querySelector('.v140-order-filterbar .v66-cat-filter > summary')?.textContent);
+      const selects = [...root.querySelectorAll('.v140-order-filterbar select')];
+      const status = selects.find(x => /status/i.test(x.getAttribute('aria-label') || ''))?.value || 'all';
+      const priority = selects.find(x => /priority/i.test(x.getAttribute('aria-label') || ''))?.value || 'all';
+      const allCats = !catSummary || /All categories/i.test(catSummary);
+      if (!search && allCats && status === 'all' && priority === 'all') {
+        const matchText = clean(root.querySelector('.v140-order-matchline')?.textContent);
+        const mm = matchText.match(/^([\d,]+)\s+matches?/i);
+        const orderedText = clean(root.querySelector('.v138-order-summary b')?.textContent);
+        const om = orderedText.match(/([\d,]+)/);
+        if (mm && om) {
+          const matches = Number(mm[1].replace(/,/g, ''));
+          const ordered = Number(om[1].replace(/,/g, ''));
+          if (Number.isFinite(matches) && Number.isFinite(ordered)) return matches + ordered;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function libraryCount(state) {
+    // v8: ALWAYS trust a count rendered by the live MediaFlow UI before any
+    // recovery cache. Large libraries can exceed localStorage quota, leaving an
+    // old mf_cloud_cache_v1 snapshot behind (for example, only 4 titles).
+    const live = liveLibraryCountFromDOM();
+    if (Number.isFinite(live) && live >= 0) return rememberLibraryCount(live);
+
+    // Carry the last verified live count across dynamic pages such as Batch Log.
+    if (rememberedLibraryCount > 0) return rememberedLibraryCount;
+
+    // Cache is now only a last-resort fallback, never the authoritative source.
+    if (Array.isArray(state?.library)) return state.library.length;
+    return 0;
   }
 
   function taskFromStateOrDOM(state) {
