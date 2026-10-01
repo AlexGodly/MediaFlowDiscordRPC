@@ -1,79 +1,32 @@
-# MediaFlow Discord RPC — Option 2 v10
+# MediaFlow Discord RPC — Option 2 v11
 
 This edition keeps the hosted MediaFlow website untouched. It uses the Chrome/Edge extension plus the local Windows tray companion.
 
-## v10 changes
+## v11 fix — Dashboard cover no longer flickers
 
-### Cleaner streak / level line
+The v10 Dashboard could alternate between the recommended title cover and the MediaFlow logo. MediaFlow redraws the Dashboard in several DOM phases, and for a very short moment the recommendation cover `<img>` can be absent. v10 treated that transient frame as “no cover” and immediately sent `mediaflow` to Discord.
 
-Anywhere the RPC shows streak + level, the line is now exactly:
+v11 keeps the last **confirmed cover URL for the same recommended title**. A temporary redraw can no longer replace it with the MediaFlow logo. The fallback logo is used only when the current title genuinely has no usable cover, exact-title recommendations are off, or the recommendation changes to a different title that has no cover.
 
-- `🔥 <streak> day streak · Level <level>`
+### Dashboard
 
-The old `MediaFlow` prefix has been removed.
-
-Examples:
-
-- `🔥 18 day streak · Level 183`
-- Old System: `In Old System` + the streak/level line
-- History: `Checking History` + the streak/level line
-- Statistics: `Checking stats` + the streak/level line
-- Settings/Profile/About: `In Settings` + the streak/level line
-
-### Dynamic Dashboard cover artwork
-
-When **Let MediaFlow choose the exact title** is enabled and MediaFlow recommends a title:
-
-- Discord uses that recommended title's MediaFlow cover URL as the **large Rich Presence image** when a usable public `http://` or `https://` cover exists.
-- The image hover text is the recommended title name.
-- If the recommended title has no usable cover, RPC falls back to the uploaded Discord asset key `mediaflow`.
-- If exact-title recommendations are disabled, Dashboard also uses the normal MediaFlow logo.
-
-Discord supports external image URLs in Rich Presence image fields, so covers do not have to be uploaded one-by-one to the Developer Portal.
-
-### Dashboard text
-
-When exact-title recommendations are OFF:
-
-- `On Dashboard`
-- `🔥 <streak> day streak · Level <level>`
-
-When exact-title recommendations are ON and a title is recommended:
+With exact-title recommendations enabled:
 
 - `Watching <title> · Episode <progress>/<total>`
-- `Reading <title> · Chapter <progress>/<total>`
-- `Reading <title> · Issue <progress>/<total>`
-- second line: `🔥 <streak> day streak · Level <level>`
+- or `Reading <title> · Chapter <progress>/<total>` / `Issue <progress>/<total>`
+- `🔥 <streak> day streak · Level <level>`
+- recommended title cover = large Discord image when available
+- MediaFlow logo = fallback when no cover exists
 
-Movies/non-progress units omit the Episode/Chapter/Issue portion.
+All v10 behavior is otherwise preserved, including Library / Order / Batch Log counts, Old System presence, and hard tray Exit.
 
-### Page-specific counts
+## Update from v10
 
-- Library → `Browsing Library` / complete Library title count
-- Personal Order → `Organizing Personal Order` / titles currently ordered
-- Batch Log → `Logging batches` / actual selected titles being logged (blank rows do not count)
-
-### Other pages
-
-- Library History / History → `Checking History`
-- Statistics → `Checking stats`
-- Old System → `In Old System`
-- Profile / About / Settings → `In Settings`
-
-## Install / update from v9
-
-1. Right-click the existing MediaFlow RPC tray icon and choose **Exit**.
+1. Exit MediaFlow RPC from the tray.
 2. Remove the old MediaFlow RPC extension from `chrome://extensions/` or `edge://extensions/`.
-3. Extract this v10 package.
-4. Enable Developer mode and choose **Load unpacked** → select the v10 `extension` folder.
+3. Extract v11.
+4. Load unpacked → select the v11 `extension` folder.
 5. Run `tray\Run-MediaFlow-RPC.bat`.
 6. Hard-refresh MediaFlow with `Ctrl + Shift + R`.
 
-The tray companion still includes the hard-exit behavior from the working v7+ build, so **Exit** removes the tray icon and terminates the process.
-
-## Cover troubleshooting
-
-Open `http://127.0.0.1:17372/status` while Dashboard is recommending a title. The diagnostics now include `Large image:`.
-
-- If it shows an `https://...` URL, the title cover was sent to Discord.
-- If it shows `mediaflow`, the fallback MediaFlow logo is being used.
+You can verify the currently selected RPC artwork at `http://127.0.0.1:17372/status` under `Large image:`.

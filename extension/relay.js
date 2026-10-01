@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V10__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V10__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V11__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V11__ = true;
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -19,7 +19,15 @@
   let lastDetectedHeading = '';
   let lastDetectedSource = '';
   let rememberedLibraryCount = 0;
-  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV10';
+  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV11';
+
+  // v11: keep the last confirmed cover for the current recommendation. MediaFlow
+  // can briefly redraw the Dashboard in multiple DOM phases; during that tiny
+  // window the cover <img> is absent even though the recommended title has not
+  // changed. Without this sticky value Discord alternates between the title
+  // cover and the fallback MediaFlow logo.
+  let stickyDashboardCoverTitle = '';
+  let stickyDashboardCoverUrl = '';
 
   try {
     chrome.storage.local.get([LIBRARY_COUNT_STORAGE_KEY]).then(data => {
@@ -432,12 +440,47 @@
     return cached || '';
   }
 
+  function stableRecommendedCoverUrl(task, item) {
+    const titleKey = clean(task?.title).toLowerCase();
+    if (!titleKey) {
+      stickyDashboardCoverTitle = '';
+      stickyDashboardCoverUrl = '';
+      return '';
+    }
+
+    // A different recommendation must never inherit the previous title's art.
+    if (stickyDashboardCoverTitle && stickyDashboardCoverTitle !== titleKey) {
+      stickyDashboardCoverTitle = '';
+      stickyDashboardCoverUrl = '';
+    }
+
+    const current = recommendedCoverUrl(task, item);
+    if (current) {
+      stickyDashboardCoverTitle = titleKey;
+      stickyDashboardCoverUrl = current;
+      return current;
+    }
+
+    // MediaFlow frequently rebuilds #view-root in stages. If the same title was
+    // already confirmed to have a cover, keep using it through those transient
+    // no-image frames instead of telling Discord to switch back to `mediaflow`.
+    if (stickyDashboardCoverTitle === titleKey && stickyDashboardCoverUrl) {
+      return stickyDashboardCoverUrl;
+    }
+
+    return '';
+  }
+
   function dashboardPresence(state) {
     const task = taskFromStateOrDOM(state);
 
     // Exact-title recommendations are OFF (or there is no eligible recommended
-    // title): keep the normal Dashboard presence.
-    if (!task) return { details: 'On Dashboard', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow' };
+    // title): keep the normal Dashboard presence and clear any old sticky art.
+    if (!task) {
+      stickyDashboardCoverTitle = '';
+      stickyDashboardCoverUrl = '';
+      return { details: 'On Dashboard', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow' };
+    }
 
     const item = libraryItemFor(task);
     const unit = clean(task.unit || item?.unit || '');
@@ -455,7 +498,7 @@
     // Use the recommended title's live cover URL as the large RPC artwork when
     // available. Discord supports external URLs here. If MediaFlow has no cover,
     // fall back to the application's uploaded `mediaflow` asset.
-    const cover = recommendedCoverUrl(task, item);
+    const cover = stableRecommendedCoverUrl(task, item);
     return {
       details,
       state: streakLevelLine(state),

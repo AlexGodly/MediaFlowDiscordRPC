@@ -1,4 +1,4 @@
-MediaFlow RPC v10
+MediaFlow RPC v11
 
 1. Exit the old MediaFlow RPC tray process.
 2. Remove the older MediaFlow RPC browser extension.
@@ -6,9 +6,7 @@ MediaFlow RPC v10
 4. Run tray\Run-MediaFlow-RPC.bat
 5. Hard-refresh https://alexgodly.github.io/MediaFlow/
 
-v10 changes:
-- Streak/level line is now: 🔥 <streak> day streak · Level <level>
-- Removed the "MediaFlow" prefix from every streak/level line.
-- Dashboard uses the recommended title cover as the large Discord RPC image when available.
-- Dashboard falls back to the MediaFlow logo if no usable title cover exists.
-- Existing page-specific Library / Order / Batch Log counts remain unchanged.
+v11 fix:
+- Prevents Dashboard artwork from alternating between the recommended title cover and the MediaFlow logo during MediaFlow DOM redraws.
+- Keeps the confirmed cover sticky for the same recommendation.
+- Falls back to the MediaFlow logo only when that recommendation genuinely has no usable cover.

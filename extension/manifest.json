@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.8.0",
-  "description": "MediaFlow Discord RPC bridge with dynamic recommended-title cover art and compact streak/level status.",
+  "version": "1.9.0",
+  "description": "MediaFlow Discord RPC bridge with stable dynamic recommended-title cover art and compact streak/level status.",
   "minimum_chrome_version": "116",
   "permissions": [
     "tabs",
