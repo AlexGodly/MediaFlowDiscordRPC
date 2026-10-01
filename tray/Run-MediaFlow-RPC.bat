@@ -6,9 +6,9 @@ set "APPDIR=%APPDATA%\MediaFlow RPC"
 if not exist "%APPDIR%" mkdir "%APPDIR%" >nul 2>nul
 set "LOG=%APPDIR%\launcher.log"
 
-echo [%date% %time%] Starting MediaFlow RPC v7>>"%LOG%"
+echo [%date% %time%] Starting MediaFlow RPC v10>>"%LOG%"
 
-rem v7 cleanup: terminate ONLY older Java MediaFlowRPC.jar companions.
+rem v10 cleanup: terminate ONLY older Java MediaFlowRPC.jar companions.
 rem This prevents an old hidden v6 process from owning port 17372.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$procs=Get-CimInstance Win32_Process ^| Where-Object { ($_.Name -ieq 'java.exe' -or $_.Name -ieq 'javaw.exe') -and $_.CommandLine -match 'MediaFlowRPC\.jar' }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch{} }" >nul 2>nul
@@ -59,5 +59,5 @@ if errorlevel 1 (
   exit /b 2
 )
 
-echo [%date% %time%] v7 bridge is listening on 127.0.0.1:17372>>"%LOG%"
+echo [%date% %time%] v10 bridge is listening on 127.0.0.1:17372>>"%LOG%"
 exit /b 0

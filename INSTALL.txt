@@ -1,4 +1,4 @@
-MediaFlow RPC v9
+MediaFlow RPC v10
 
 1. Exit the old MediaFlow RPC tray process.
 2. Remove the older MediaFlow RPC browser extension.
@@ -6,10 +6,9 @@ MediaFlow RPC v9
 4. Run tray\Run-MediaFlow-RPC.bat
 5. Hard-refresh https://alexgodly.github.io/MediaFlow/
 
-Changes:
-- Old System gets its own RPC status.
-- Library count = total Library titles.
-- Order count = ordered titles only.
-- Batch Log count = selected titles being logged only.
-- Dashboard recommended title appears only when MediaFlow exact-title recommendations are enabled.
-- Streak/Level stays on its own complete Discord text line.
+v10 changes:
+- Streak/level line is now: 🔥 <streak> day streak · Level <level>
+- Removed the "MediaFlow" prefix from every streak/level line.
+- Dashboard uses the recommended title cover as the large Discord RPC image when available.
+- Dashboard falls back to the MediaFlow logo if no usable title cover exists.
+- Existing page-specific Library / Order / Batch Log counts remain unchanged.

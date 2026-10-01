@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V9__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V9__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V10__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V10__ = true;
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -19,7 +19,7 @@
   let lastDetectedHeading = '';
   let lastDetectedSource = '';
   let rememberedLibraryCount = 0;
-  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV9';
+  const LIBRARY_COUNT_STORAGE_KEY = 'mediaflowRpcLiveLibraryCountV10';
 
   try {
     chrome.storage.local.get([LIBRARY_COUNT_STORAGE_KEY]).then(data => {
@@ -238,7 +238,7 @@
 
   function streakLevelLine(state) {
     const { streak, level } = readMeta(state);
-    return `MediaFlow 🔥 ${streak.toLocaleString()} day streak · Level ${level.toLocaleString()}`;
+    return `🔥 ${streak.toLocaleString()} day streak · Level ${level.toLocaleString()}`;
   }
 
   function rememberLibraryCount(value) {
@@ -406,17 +406,43 @@
     return ['chapters', 'chapter', 'issues', 'issue', 'pages', 'page'].includes(u);
   }
 
+  function safeExternalImageUrl(value) {
+    const raw = clean(value);
+    if (!/^https?:\/\//i.test(raw)) return '';
+    try {
+      const u = new URL(raw, location.href);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+      return u.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function recommendedCoverUrl(task, item) {
+    // Prefer the exact image MediaFlow is currently rendering for the
+    // recommendation. This is live and cannot be confused with an old cache.
+    const hero = document.querySelector('#view-root .hero');
+    const img = hero?.querySelector('.hero-note.v50-title-feature img.v50-cover, .hero-note img.v50-cover');
+    const live = safeExternalImageUrl(img?.currentSrc || img?.src || img?.getAttribute('src'));
+    if (live) return live;
+
+    // If the recommendation has a cover URL but the image card has not painted
+    // yet, the title-matched Library record is a safe fallback.
+    const cached = safeExternalImageUrl(item?.coverUrl);
+    return cached || '';
+  }
+
   function dashboardPresence(state) {
     const task = taskFromStateOrDOM(state);
 
     // Exact-title recommendations are OFF (or there is no eligible recommended
     // title): keep the normal Dashboard presence.
-    if (!task) return { details: 'On Dashboard', state: streakLevelLine(state) };
+    if (!task) return { details: 'On Dashboard', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow' };
 
     const item = libraryItemFor(task);
     const unit = clean(task.unit || item?.unit || '');
     const title = clean(task.title || item?.title || '');
-    if (!title) return { details: 'On Dashboard', state: streakLevelLine(state) };
+    if (!title) return { details: 'On Dashboard', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow' };
 
     let details = `${readingUnit(unit) ? 'Reading' : 'Watching'} ${title}`;
     const word = progressWord(unit);
@@ -426,9 +452,16 @@
       if (total > 0) details += ` · ${word} ${progress.toLocaleString()}/${total.toLocaleString()}`;
     }
 
-    // Discord Rich Presence exposes only details + state beneath the app name.
-    // Keep the user's streak/level as its own complete line.
-    return { details, state: streakLevelLine(state) };
+    // Use the recommended title's live cover URL as the large RPC artwork when
+    // available. Discord supports external URLs here. If MediaFlow has no cover,
+    // fall back to the application's uploaded `mediaflow` asset.
+    const cover = recommendedCoverUrl(task, item);
+    return {
+      details,
+      state: streakLevelLine(state),
+      largeImage: cover || 'mediaflow',
+      largeText: cover ? title : 'MediaFlow'
+    };
   }
 
   function buildPresence() {
@@ -447,22 +480,22 @@
         return { kind: 'presence', ...p, ...debug };
       }
       case 'library':
-        return { kind: 'presence', details: 'Browsing Library', state: libraryCountText, ...debug };
+        return { kind: 'presence', details: 'Browsing Library', state: libraryCountText, largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'order':
-        return { kind: 'presence', details: 'Organizing Personal Order', state: titleCountText(orderCountFromDOM()), ...debug };
+        return { kind: 'presence', details: 'Organizing Personal Order', state: titleCountText(orderCountFromDOM()), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'libraryhistory':
       case 'history':
-        return { kind: 'presence', details: 'Checking History', state: streakLevelLine(state), ...debug };
+        return { kind: 'presence', details: 'Checking History', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'batch':
-        return { kind: 'presence', details: 'Logging batches', state: titleCountText(batchCountFromDOM()), ...debug };
+        return { kind: 'presence', details: 'Logging batches', state: titleCountText(batchCountFromDOM()), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'stats':
-        return { kind: 'presence', details: 'Checking stats', state: streakLevelLine(state), ...debug };
+        return { kind: 'presence', details: 'Checking stats', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'oldsystem':
-        return { kind: 'presence', details: 'In Old System', state: streakLevelLine(state), ...debug };
+        return { kind: 'presence', details: 'In Old System', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'settings':
-        return { kind: 'presence', details: 'In Settings', state: streakLevelLine(state), ...debug };
+        return { kind: 'presence', details: 'In Settings', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       default:
-        return { kind: 'presence', details: 'Using MediaFlow', state: streakLevelLine(state), ...debug };
+        return { kind: 'presence', details: 'Using MediaFlow', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
     }
   }
 

@@ -358,6 +358,7 @@ public final class MediaFlowRpcTray {
         private java.util.function.Consumer<String> statusListener = x -> {};
         private volatile String lastPresenceDetails = "";
         private volatile String lastPresenceState = "";
+        private volatile String lastPresenceImage = "";
         private volatile long lastPresenceAt = 0L;
         private volatile long lastExtensionContactAt = 0L;
         private volatile String lastDetectedView = "";
@@ -441,13 +442,14 @@ public final class MediaFlowRpcTray {
                     String bodyText = "MediaFlow RPC diagnostics\n" +
                             "=========================\n" +
                             "Bridge: RUNNING\n" +
-                            "Relay transport: HTTP POST (v7)\n" +
+                            "Relay transport: HTTP POST (v10)\n" +
                             "HTTP presence requests: " + httpRequests.get() + "\n" +
                             "Active legacy WebSocket clients: " + clients.get() + "\n" +
                             "Last extension contact: " + (lastExtensionContactAt > 0 ? new java.util.Date(lastExtensionContactAt) : "never") + "\n" +
                             "Last MediaFlow activity: " + (lastPresenceAt > 0 ? new java.util.Date(lastPresenceAt) : "never") + "\n" +
                             "Details: " + (lastPresenceDetails.isBlank() ? "(none)" : lastPresenceDetails) + "\n" +
                             "State: " + (lastPresenceState.isBlank() ? "(none)" : lastPresenceState) + "\n" +
+                            "Large image: " + (lastPresenceImage.isBlank() ? "(none)" : lastPresenceImage) + "\n" +
                             "Detected view: " + (lastDetectedView.isBlank() ? "(none)" : lastDetectedView) + "\n" +
                             "Detected heading: " + (lastDetectedHeading.isBlank() ? "(none)" : lastDetectedHeading) + "\n" +
                             "View source: " + (lastDetectedSource.isBlank() ? "(none)" : lastDetectedSource) + "\n\n" +
@@ -532,12 +534,13 @@ public final class MediaFlowRpcTray {
 
         private void handleMessage(String message) {
             if (message == null) return;
-            if ("MF1|K".equals(message) || "MF2|K".equals(message)) return;
+            if ("MF1|K".equals(message) || "MF2|K".equals(message) || "MF3|K".equals(message)) return;
 
-            if ("MF1|C".equals(message) || "MF2|C".equals(message)) {
+            if ("MF1|C".equals(message) || "MF2|C".equals(message) || "MF3|C".equals(message)) {
                 discord.clearPresence();
                 lastPresenceDetails = "";
                 lastPresenceState = "";
+                lastPresenceImage = "";
                 lastDetectedView = "";
                 lastDetectedHeading = "";
                 lastDetectedSource = "";
@@ -549,23 +552,29 @@ public final class MediaFlowRpcTray {
             String[] parts = message.split("\\|", -1);
             boolean v1 = parts.length >= 4 && "MF1".equals(parts[0]) && "P".equals(parts[1]);
             boolean v2 = parts.length >= 4 && "MF2".equals(parts[0]) && "P".equals(parts[1]);
-            if (!v1 && !v2) return;
+            boolean v3 = parts.length >= 4 && "MF3".equals(parts[0]) && "P".equals(parts[1]);
+            if (!v1 && !v2 && !v3) return;
 
             try {
                 String details = decodeBase64(parts[2]);
                 String state = decodeBase64(parts[3]);
                 lastPresenceDetails = details;
                 lastPresenceState = state;
-                if (v2) {
+                if (v2 || v3) {
                     lastDetectedView = parts.length > 4 ? decodeBase64(parts[4]) : "";
                     lastDetectedHeading = parts.length > 5 ? decodeBase64(parts[5]) : "";
                     lastDetectedSource = parts.length > 6 ? decodeBase64(parts[6]) : "";
                 }
+                String largeImage = v3 && parts.length > 7 ? decodeBase64(parts[7]) : "mediaflow";
+                String largeText = v3 && parts.length > 8 ? decodeBase64(parts[8]) : "MediaFlow";
+                if (largeImage == null || largeImage.isBlank()) largeImage = "mediaflow";
+                if (largeText == null || largeText.isBlank()) largeText = "MediaFlow";
+                lastPresenceImage = largeImage;
                 lastPresenceAt = System.currentTimeMillis();
-                Presence p = new Presence(details, state);
+                Presence p = new Presence(details, state, largeImage, largeText);
                 discord.setPresence(p);
                 statusListener.accept(details);
-                log("MediaFlow presence received [" + lastDetectedView + "/" + lastDetectedSource + "]: " + details + " | " + state);
+                log("MediaFlow presence received [" + lastDetectedView + "/" + lastDetectedSource + "]: " + details + " | " + state + " | image=" + largeImage);
             } catch (Exception ex) {
                 log("Could not decode MediaFlow presence", ex);
             }
@@ -922,16 +931,18 @@ public final class MediaFlowRpcTray {
             if (p == null) return;
             String details = discordText(p.details());
             String state = discordText(p.state());
+            String largeImage = discordImage(p.largeImage());
+            String largeText = discordText(p.largeText());
 
-            // Legacy local RPC SET_ACTIVITY payload. The application name comes
-            // from the Application ID, so only documented activity fields are sent.
+            // Discord accepts either an uploaded application asset key or a
+            // publicly reachable http(s) URL for Rich Presence image fields.
             String activity =
                     "{" +
                     "\"details\":\"" + json(details) + "\"," +
                     "\"state\":\"" + json(state) + "\"," +
                     "\"assets\":{" +
-                    "\"large_image\":\"mediaflow\"," +
-                    "\"large_text\":\"MediaFlow\"" +
+                    "\"large_image\":\"" + json(largeImage) + "\"," +
+                    "\"large_text\":\"" + json(largeText) + "\"" +
                     "}," +
                     "\"instance\":false" +
                     "}";
@@ -984,6 +995,18 @@ public final class MediaFlowRpcTray {
             }
         }
 
+        private static String discordImage(String value) {
+            String s = value == null ? "" : value.strip();
+            if (s.isEmpty()) return "mediaflow";
+            String lower = s.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                // Keep the URL intact. Truncating an image URL would make it invalid.
+                return s.length() <= 2048 ? s : "mediaflow";
+            }
+            // Asset keys are short identifiers configured in the Developer Portal.
+            return s.length() <= 256 ? s : "mediaflow";
+        }
+
         private static String discordText(String value) {
             String s = value == null ? "" : value.strip();
             if (s.codePointCount(0, s.length()) < 2) s = s + " ";
@@ -1018,5 +1041,5 @@ public final class MediaFlowRpcTray {
         record DiscordFrame(int opcode, byte[] payload) {}
     }
 
-    record Presence(String details, String state) {}
+    record Presence(String details, String state, String largeImage, String largeText) {}
 }
