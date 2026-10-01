@@ -1,12 +1,7 @@
-MediaFlow RPC v11
+MediaFlow RPC v12
 
-1. Exit the old MediaFlow RPC tray process.
-2. Remove the older MediaFlow RPC browser extension.
-3. Load unpacked: extension
-4. Run tray\Run-MediaFlow-RPC.bat
-5. Hard-refresh https://alexgodly.github.io/MediaFlow/
-
-v11 fix:
-- Prevents Dashboard artwork from alternating between the recommended title cover and the MediaFlow logo during MediaFlow DOM redraws.
-- Keeps the confirmed cover sticky for the same recommendation.
-- Falls back to the MediaFlow logo only when that recommendation genuinely has no usable cover.
+1. Exit old tray app and run tray\Kill-MediaFlow-RPC.bat.
+2. Remove old MediaFlow RPC extensions.
+3. Load unpacked: extension\
+4. Run tray\Run-MediaFlow-RPC.bat.
+5. Refresh MediaFlow with Ctrl+Shift+R.

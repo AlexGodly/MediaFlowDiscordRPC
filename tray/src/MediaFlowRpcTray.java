@@ -77,7 +77,7 @@ public final class MediaFlowRpcTray {
             Runtime.getRuntime().halt(0);
             return;
         }
-        log("Starting MediaFlow RPC v7 " + System.getProperty("java.version") + " on " + System.getProperty("os.name"));
+        log("Starting MediaFlow RPC v12 " + System.getProperty("java.version") + " on " + System.getProperty("os.name"));
 
         try {
             initTray();
@@ -534,9 +534,15 @@ public final class MediaFlowRpcTray {
 
         private void handleMessage(String message) {
             if (message == null) return;
-            if ("MF1|K".equals(message) || "MF2|K".equals(message) || "MF3|K".equals(message)) return;
+            // v12 deliberately ignores MF1/MF2/MF3 packets so stale extension
+            // instances cannot overwrite the current Rich Presence.
+            if ("MF4|K".equals(message)) return;
+            if (message.startsWith("MF1|") || message.startsWith("MF2|") || message.startsWith("MF3|")) {
+                log("Ignored legacy extension packet: " + message.substring(0, Math.min(message.length(), 5)));
+                return;
+            }
 
-            if ("MF1|C".equals(message) || "MF2|C".equals(message) || "MF3|C".equals(message)) {
+            if ("MF4|C".equals(message)) {
                 discord.clearPresence();
                 lastPresenceDetails = "";
                 lastPresenceState = "";
@@ -550,23 +556,24 @@ public final class MediaFlowRpcTray {
             }
 
             String[] parts = message.split("\\|", -1);
-            boolean v1 = parts.length >= 4 && "MF1".equals(parts[0]) && "P".equals(parts[1]);
-            boolean v2 = parts.length >= 4 && "MF2".equals(parts[0]) && "P".equals(parts[1]);
-            boolean v3 = parts.length >= 4 && "MF3".equals(parts[0]) && "P".equals(parts[1]);
-            if (!v1 && !v2 && !v3) return;
+            boolean v4 = parts.length >= 4 && "MF4".equals(parts[0]) && "P".equals(parts[1]);
+            if (!v4) return;
 
             try {
                 String details = decodeBase64(parts[2]);
                 String state = decodeBase64(parts[3]);
+                // Final v12 safeguard: old builds used "MediaFlow 🔥 ...".
+                // Never allow that prefix to reach Discord again.
+                if (state != null && state.startsWith("MediaFlow 🔥")) {
+                    state = state.substring("MediaFlow ".length());
+                }
                 lastPresenceDetails = details;
                 lastPresenceState = state;
-                if (v2 || v3) {
-                    lastDetectedView = parts.length > 4 ? decodeBase64(parts[4]) : "";
-                    lastDetectedHeading = parts.length > 5 ? decodeBase64(parts[5]) : "";
-                    lastDetectedSource = parts.length > 6 ? decodeBase64(parts[6]) : "";
-                }
-                String largeImage = v3 && parts.length > 7 ? decodeBase64(parts[7]) : "mediaflow";
-                String largeText = v3 && parts.length > 8 ? decodeBase64(parts[8]) : "MediaFlow";
+                lastDetectedView = parts.length > 4 ? decodeBase64(parts[4]) : "";
+                lastDetectedHeading = parts.length > 5 ? decodeBase64(parts[5]) : "";
+                lastDetectedSource = parts.length > 6 ? decodeBase64(parts[6]) : "";
+                String largeImage = parts.length > 7 ? decodeBase64(parts[7]) : "mediaflow";
+                String largeText = parts.length > 8 ? decodeBase64(parts[8]) : "MediaFlow";
                 if (largeImage == null || largeImage.isBlank()) largeImage = "mediaflow";
                 if (largeText == null || largeText.isBlank()) largeText = "MediaFlow";
                 lastPresenceImage = largeImage;

@@ -53,7 +53,7 @@ echo [3/4] Creating portable Windows EXE app image...
   --icon mediaflow.ico ^
   --dest dist ^
   --vendor "Alex Godly" ^
-  --app-version 1.8.0
+  --app-version 1.12.0
 if errorlevel 1 goto :fail
 
 echo [4/4] Creating portable ZIP...

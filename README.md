@@ -1,32 +1,22 @@
-# MediaFlow Discord RPC — Option 2 v11
+# MediaFlow Discord RPC — Option 2 v12
 
-This edition keeps the hosted MediaFlow website untouched. It uses the Chrome/Edge extension plus the local Windows tray companion.
+This build keeps the working v11 dynamic cover behavior and fixes stale/legacy status packets.
 
-## v11 fix — Dashboard cover no longer flickers
+## v12 changes
 
-The v10 Dashboard could alternate between the recommended title cover and the MediaFlow logo. MediaFlow redraws the Dashboard in several DOM phases, and for a very short moment the recommendation cover `<img>` can be absent. v10 treated that transient frame as “no cover” and immediately sent `mediaflow` to Discord.
+- Streak/level is always exactly `🔥 <streak> day streak · Level <level>` — no `MediaFlow` prefix.
+- The tray companion now accepts only the v12 `MF4` bridge protocol. Old v7-v11 extension packets are ignored so an older unpacked extension cannot overwrite the current RPC.
+- The tray also strips a legacy `MediaFlow ` prefix defensively before sending Rich Presence to Discord.
+- Dashboard recommended-title cover remains sticky and falls back to the `mediaflow` Discord asset only when no cover is available.
+- Existing page-specific Library / Order / Batch Log counts and Old System behavior are preserved.
 
-v11 keeps the last **confirmed cover URL for the same recommended title**. A temporary redraw can no longer replace it with the MediaFlow logo. The fallback logo is used only when the current title genuinely has no usable cover, exact-title recommendations are off, or the recommendation changes to a different title that has no cover.
-
-### Dashboard
-
-With exact-title recommendations enabled:
-
-- `Watching <title> · Episode <progress>/<total>`
-- or `Reading <title> · Chapter <progress>/<total>` / `Issue <progress>/<total>`
-- `🔥 <streak> day streak · Level <level>`
-- recommended title cover = large Discord image when available
-- MediaFlow logo = fallback when no cover exists
-
-All v10 behavior is otherwise preserved, including Library / Order / Batch Log counts, Old System presence, and hard tray Exit.
-
-## Update from v10
+## Update cleanly
 
 1. Exit MediaFlow RPC from the tray.
-2. Remove the old MediaFlow RPC extension from `chrome://extensions/` or `edge://extensions/`.
-3. Extract v11.
-4. Load unpacked → select the v11 `extension` folder.
+2. Run `tray\Kill-MediaFlow-RPC.bat` once.
+3. Remove all old `MediaFlow Discord RPC Bridge` entries from `chrome://extensions/`.
+4. Load unpacked from this v12 `extension` folder.
 5. Run `tray\Run-MediaFlow-RPC.bat`.
-6. Hard-refresh MediaFlow with `Ctrl + Shift + R`.
+6. Hard-refresh MediaFlow (`Ctrl+Shift+R`).
 
-You can verify the currently selected RPC artwork at `http://127.0.0.1:17372/status` under `Large image:`.
+If an old extension is accidentally left enabled, v12's tray ignores its old MF1/MF2/MF3 packets.
