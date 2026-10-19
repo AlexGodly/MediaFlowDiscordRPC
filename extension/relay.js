@@ -583,6 +583,9 @@
       const stateObject = readCachedState();
       payload.xp = Number(stateObject?.xp ?? stateObject?.stats?.xp ?? 0) || 0;
       payload.xpNext = Number(stateObject?.xpNext ?? stateObject?.stats?.xpNext ?? 0) || 0;
+      const rootColors = getComputedStyle(document.documentElement);
+      payload.themeAccent = ['--accent','--mf-accent','--color-primary','--primary'].map(k => rootColors.getPropertyValue(k).trim()).find(Boolean) || '';
+      payload.themeMode = document.documentElement.classList.contains('light') || document.body.classList.contains('light') ? 'light' : 'midnight';
       const usernameNode = document.querySelector('.sidebar-account-name, .account-name, .profile-name, .user-name, #profile-name');
       payload.username = String(usernameNode?.value || usernameNode?.textContent || '').trim().slice(0, 100);
       const dialog = [...document.querySelectorAll('[role="dialog"], .modal.open, .modal.is-open, .modal.show')].find(el => {

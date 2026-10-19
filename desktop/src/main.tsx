@@ -50,11 +50,11 @@ function App(){
  const cfg=s.config,appearance=cfg.appearance||{},manual=cfg.manual||{},show=cfg.show||{},when=cfg.when||{};
  const refresh=useCallback(()=>window.studio.getState().then((data:Snapshot)=>setS(data)),[]);
  useEffect(()=>{refresh();const unsubscribe=window.studio.subscribe(setS);window.studio.getBrowsers().then(setBrowsers);window.studio.getPwas().then(setPwas);return unsubscribe;},[refresh]);
- useEffect(()=>{document.documentElement.style.setProperty('--accent',appearance.accent||'#a189ff');document.documentElement.dataset.theme=appearance.theme||'midnight';},[appearance.accent,appearance.theme]);
+ useEffect(()=>{document.documentElement.style.setProperty('--accent',appearance.syncMediaFlow&&s.active?.themeAccent||appearance.accent||'#a189ff');document.documentElement.dataset.theme=appearance.syncMediaFlow&&s.active?.themeMode||appearance.theme||'midnight';},[appearance.accent,appearance.theme,appearance.syncMediaFlow,s.active?.themeAccent,s.active?.themeMode]);
  const patch=useCallback((part:Obj)=>{setS(prev=>({...prev,config:mergeObj(prev.config,part)}));window.studio.saveConfig(part).catch((e:Error)=>setMessage(e.message));},[]);
  const change=(k:string,value:any)=>patch({[k]:value});
  const toggle=(group:string,key:string,value:boolean)=>patch({[group]:{[key]:value}});
- const chooseImage=async(group:string)=>{try{const image=await window.studio.selectImage();if(image){patch({[group]:{local:image.url}});setMessage('Image saved for Studio preview. Discord requires an HTTPS URL or uploaded application asset.');}}catch(e:any){setMessage(e.message)}};
+ const chooseImage=async(group:string)=>{try{const image=await window.studio.selectImage();if(image){patch(group==='appearance'?{appearance:{backgroundLocal:image.url}}:{[group]:{local:image.url}});setMessage('Image saved for Studio preview. Discord requires an HTTPS URL or uploaded application asset.');}}catch(e:any){setMessage(e.message)}};
  const launch=async(edition:string,target:string)=>{const result=await window.studio.openEdition(edition,target,cfg.launcher?.browser);setMessage(result.warning||('Opened '+(edition==='plus'?'Plus':'Personal')+' '+result.target));};
  const pageName=NAV.find(x=>x.id===page)?.name||'Overview';
  const live=useMemo(()=>s.active||{},[s.active]);
@@ -62,7 +62,7 @@ function App(){
  const refreshPwas=()=>window.studio.getPwas().then(setPwas);
  const action=async(key:string,...args:any[])=>{try{const r=await window.studio[key](...args);setMessage(r?.guide||r?.warning||'Action completed.');return r}catch(e:any){setMessage(e.message)}};
  const topAction=<div className="top-actions"><span className="top-edition">PERSONAL <b>507</b> <i/> PLUS <b>436</b></span><Pill tone={s.discord.connected?'good':'warn'}>{s.discord.connected?<Wifi size={13}/>:<WifiOff size={13}/>} {s.discord.status}</Pill></div>;
- return <div className={'shell '+(appearance.compact?'compact-shell':'')} style={appearance.background?{backgroundImage:'linear-gradient(115deg,rgba(9,11,25,.9),rgba(9,11,25,.7)),url('+JSON.stringify(appearance.background)+')'}:undefined}>
+ return <div className={'shell '+(appearance.compact?'compact-shell':'')} style={appearance.background||appearance.backgroundLocal?{backgroundImage:'linear-gradient(115deg,rgba(9,11,25,.9),rgba(9,11,25,.7)),url('+JSON.stringify(appearance.background||appearance.backgroundLocal)+')'}:undefined}>
   <aside className={'sidebar '+(showSidebar?'sidebar-open':'')}>
    <div className="brand"><div className="brand-icon"><Layers size={23}/></div><div><strong>MediaFlow</strong><span>PRESENCE STUDIO <b>v20.507</b></span></div></div>
    <div className="nav-scroller">{['Workspace','Customize','Connection'].map(group=><div key={group} className="nav-group"><div className="group-label">{group}</div>{NAV.filter(x=>x.group===group).map(item=><button type="button" key={item.id} className={'nav-item '+(page===item.id?'selected':'')} onClick={()=>{setPage(item.id);setShowSidebar(false);}}><item.icon size={18}/><span>{item.name}</span>{page===item.id&&<span className="nav-dot"/>}</button>)}</div>)}</div>

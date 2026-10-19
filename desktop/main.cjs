@@ -15,7 +15,7 @@ function rendered(){return compile(currentEntry(),config);}
 function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT},diagnostics:diagnostics.slice(0,75)};}
 function notify(){if(window&&!window.isDestroyed())window.webContents.send('studio:state',state());refreshTray();}
 function applyPresence(){if(discord)discord.setActivity(rendered());notify();}
-function setConfig(partial){config=merge(config,partial);save();applyPresence();return state();}
+function setConfig(partial){const oldId=config.applicationId;config=merge(config,partial);save();if(discord&&oldId!==config.applicationId){discord.socket?.destroy();discord.disconnect('Discord Application ID updated — reconnecting');}applyPresence();return state();}
 function emitNotification(title,body){if(!config.notifications||!Notification.isSupported())return;new Notification({title,body}).show();}
 class DiscordIpc{
  constructor(){this.socket=null;this.ready=false;this.status='Not connected';this.error='';this.buffer=Buffer.alloc(0);this.pending=null;this.lastSent='';this.lastAt=0;this.connecting=false;this.interval=setInterval(()=>this.tick(),5000);}

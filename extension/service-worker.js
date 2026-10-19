@@ -44,7 +44,7 @@ function wireFor(entry) {
     field(p.largeImage || 'mediaflow'), field(p.largeText || 'MediaFlow', 150),
     field(entry.edition, 16), field(p.smallImage || 'mediaflow'),
     field(p.smallText || 'MediaFlow', 150), field(p.username || '', 100), field(p.profileImage || ''),
-    field(p.title || ''), field(p.action || ''), field(p.level || 0, 10), field(p.streak || 0, 10), field(p.xp || 0, 20), field(p.xpNext || 0, 20)
+    field(p.title || ''), field(p.action || ''), field(p.level || 0, 10), field(p.streak || 0, 10), field(p.xp || 0, 20), field(p.xpNext || 0, 20), field(p.themeAccent || '', 70), field(p.themeMode || '', 20)
   ].join('|');
 }
 async function postWire(wire) {
