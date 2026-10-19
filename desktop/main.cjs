@@ -5,14 +5,14 @@ const {spawn,execFile}=require('node:child_process');
 const {EDITIONS,DEFAULTS,merge,compile,parseWire}=require('./core.cjs');
 const PORT=17372,APP='MediaFlow Presence Studio';
 let window=null,tray=null,server=null,exiting=false,config=merge(DEFAULTS,{}),active=null,diagnostics=[],recent=[],bridgeStatus='Not started',configFile='';
-let discord=null,selectionPolicy='active';
+let discord=null,lastExtensionContact=0,selectionPolicy='active';
 function log(message){const line=new Date().toLocaleTimeString()+' · '+message;diagnostics.unshift(line);diagnostics=diagnostics.slice(0,120);notify();}
 function load(){configFile=path.join(app.getPath('userData'),'presence-studio.json');try{config=merge(DEFAULTS,JSON.parse(fs.readFileSync(configFile,'utf8')));}catch{config=merge(DEFAULTS,{});}}
 function save(){try{fs.mkdirSync(path.dirname(configFile),{recursive:true});fs.writeFileSync(configFile,JSON.stringify(config,null,2),'utf8');}catch(e){log('Could not save settings: '+e.message);}}
 function isValidId(s){return /^\d{15,25}$/.test(String(s||'').trim());}
 function currentEntry(){if(config.mode==='manual')return {...config.manual,edition:config.manual.edition||'personal',view:'details'};return active;}
 function rendered(){return compile(currentEntry(),config);}
-function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT},diagnostics:diagnostics.slice(0,75)};}
+function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT,extensionConnected:Date.now()-lastExtensionContact<20000,lastContact:lastExtensionContact},diagnostics:diagnostics.slice(0,75)};}
 function notify(){if(window&&!window.isDestroyed())window.webContents.send('studio:state',state());refreshTray();}
 function applyPresence(){if(discord)discord.setActivity(rendered());notify();}
 function setConfig(partial){const oldId=config.applicationId;config=merge(config,partial);save();if(discord&&oldId!==config.applicationId){discord.socket?.destroy();discord.disconnect('Discord Application ID updated — reconnecting');}applyPresence();return state();}
@@ -71,6 +71,7 @@ function bridge(){
   req.on('data',part=>{size+=part.length;if(size>32768){req.destroy();return;}chunks.push(part);});
   req.on('end',()=>{
    const parsed=parseWire(Buffer.concat(chunks).toString('utf8'));if(!parsed){res.writeHead(400);return res.end('Invalid MF5 message');}
+   lastExtensionContact=Date.now();
    if(parsed.kind==='clear'){active=null;log('Browser activity cleared');}
    else{
     active=parsed.entry;active.source=active.source||'extension';
@@ -170,6 +171,18 @@ function attach(){
  on('getPwas',()=>pwaShortcuts());
  on('openEdition',(edition,target,browser)=>openEdition(edition,target,browser));
  on('installPwa',(edition,browser)=>{if(!EDITIONS[edition])return {ok:false};browserLaunch(EDITIONS[edition].url,browser||config.launcher.browser);return {ok:true,guide:'Use the browser Install app control in the address bar or menu; approval is required.'};});
+ on('prepareExtension',async browser=>{
+  const bundled=path.join(process.resourcesPath,'mediaflow-extension');
+  if(!fs.existsSync(path.join(bundled,'manifest.json')))throw Error('Bundled extension missing from this build');
+  const target=path.join(app.getPath('userData'),'BrowserExtension');
+  fs.mkdirSync(target,{recursive:true});fs.cpSync(bundled,target,{recursive:true,force:true});
+  const manifest=JSON.parse(fs.readFileSync(path.join(target,'manifest.json'),'utf8'));
+  const selected=browser||config.launcher.browser;
+  const browserName=selected==='edge'?'Edge':selected==='brave'?'Brave':'Chrome';
+  const exe=findBrowser(selected);if(exe){spawn(exe,[selected==='edge'?'edge://extensions/':'chrome://extensions/'],{detached:true,stdio:'ignore'}).unref();}
+  shell.showItemInFolder(path.join(target,'manifest.json'));
+  return {ok:true,path:target,version:manifest.version,guide:'Extension folder prepared: '+target+' . In '+browserName+', enable Developer mode and select Load unpacked, then choose this folder. Chrome does not allow silent unpacked-extension installation.'};
+ });
  on('openExtensions',browser=>{const b=browser||config.launcher.browser;const url=b==='edge'?'edge://extensions/':'chrome://extensions/';const exe=findBrowser(b);if(exe){spawn(exe,[url],{detached:true,stdio:'ignore'}).unref();return {ok:true};}return {ok:false,error:'Please open your browser extension settings manually.'};});
  on('selectImage',()=>selectImage());
  on('openExternal',url=>{if(typeof url==='string'&&/^https:\/\//.test(url)){shell.openExternal(url);return {ok:true};}return {ok:false};});

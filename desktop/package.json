@@ -49,6 +49,15 @@
       ],
       "icon": "assets/mediaflow.ico",
       "artifactName": "MediaFlowPresenceStudio-v20.507-portable.exe"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "../extension",
+        "to": "mediaflow-extension",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }
