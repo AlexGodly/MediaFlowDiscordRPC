@@ -3,16 +3,17 @@ const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,shell,Notification
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),net=require('node:net'),crypto=require('node:crypto'),os=require('node:os');
 const {spawn,execFile}=require('node:child_process');
 const {EDITIONS,DEFAULTS,merge,compile,parseWire}=require('./core.cjs');
+const {Catalog,MAX_BYTES}=require('./catalog.cjs');
 const PORT=17372,APP='MediaFlow Presence Studio';
 let window=null,tray=null,server=null,exiting=false,config=merge(DEFAULTS,{}),active=null,diagnostics=[],recent=[],bridgeStatus='Not started',configFile='';
-let discord=null,lastExtensionContact=0,selectionPolicy='active';
+let discord=null,catalog=null,lastExtensionContact=0,selectionPolicy='active';
 function log(message){const line=new Date().toLocaleTimeString()+' · '+message;diagnostics.unshift(line);diagnostics=diagnostics.slice(0,120);notify();}
 function load(){configFile=path.join(app.getPath('userData'),'presence-studio.json');try{config=merge(DEFAULTS,JSON.parse(fs.readFileSync(configFile,'utf8')));}catch{config=merge(DEFAULTS,{});}}
 function save(){try{fs.mkdirSync(path.dirname(configFile),{recursive:true});fs.writeFileSync(configFile,JSON.stringify(config,null,2),'utf8');}catch(e){log('Could not save settings: '+e.message);}}
 function isValidId(s){return /^\d{15,25}$/.test(String(s||'').trim());}
 function currentEntry(){if(config.mode==='manual')return {...config.manual,edition:config.manual.edition||'personal',view:'details'};return active;}
 function rendered(){return compile(currentEntry(),config);}
-function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT,extensionConnected:Date.now()-lastExtensionContact<20000,lastContact:lastExtensionContact},diagnostics:diagnostics.slice(0,75)};}
+function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,catalogSummary:catalog?catalog.meta:{personal:null,plus:null},discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT,extensionConnected:Date.now()-lastExtensionContact<20000,lastContact:lastExtensionContact},diagnostics:diagnostics.slice(0,75)};}
 function notify(){if(window&&!window.isDestroyed())window.webContents.send('studio:state',state());refreshTray();}
 function applyPresence(){if(discord)discord.setActivity(rendered());notify();}
 function setConfig(partial){const oldId=config.applicationId,oldMode=config.mode;config=merge(config,partial);if(oldMode!=='manual'&&config.mode==='manual')config.manual.startedAt=Date.now();save();if(discord&&oldId!==config.applicationId){discord.socket?.destroy();discord.disconnect('Discord Application ID updated — reconnecting');}applyPresence();return state();}
@@ -63,6 +64,28 @@ function bridge(){
   if(!allowedOrigin(origin)){res.writeHead(403);return res.end('Origin denied');}
   if(origin){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');}
   if(req.method==='OPTIONS'){res.setHeader('Access-Control-Allow-Methods','POST,GET,OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type');res.writeHead(204);return res.end();}
+  if(req.method==='GET'&&req.url==='/catalog-policy'){
+    res.setHeader('Content-Type','application/json; charset=utf-8');
+    return res.end(JSON.stringify({enabled:!!config.librarySync?.enabled,max:120000,chunkSize:250}));
+  }
+  if(req.method==='POST'&&req.url==='/catalog'){
+    if(!config.librarySync?.enabled){res.writeHead(403);return res.end('Catalogue permission disabled');}
+    res.setHeader('Content-Type','application/json; charset=utf-8');
+    let size=0,chunks=[],failed=false;
+    req.on('data',part=>{size+=part.length;if(size>MAX_BYTES){failed=true;req.destroy();return;}chunks.push(part)});
+    req.on('end',()=>{if(failed)return;
+      try{
+        const p=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if(!['personal','plus'].includes(p.edition))throw Error('Invalid edition');
+        const response=p.phase==='begin'?catalog.begin(p):
+          p.phase==='chunk'?catalog.chunk(p):
+          p.phase==='end'?catalog.finish(p):
+          (()=>{throw Error('Invalid catalogue phase')})();
+        if(p.phase==='end'){log('Catalog synced: '+p.edition+' ('+response.count+' titles)');notify();}
+        res.end(JSON.stringify(response));
+      }catch(err){res.writeHead(400);res.end(JSON.stringify({ok:false,error:err.message}));}
+    });return;
+  }
   if(req.method==='GET'&&req.url==='/health')return res.end('MediaFlow Presence Studio v20.507 is running');
   if(req.method==='GET'&&req.url==='/policy'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({priority:config.editionPriority,fixedEdition:config.fixedEdition,mode:config.mode}));}
   if(req.method==='GET'&&req.url==='/status')return res.end(JSON.stringify({bridge:bridgeStatus,discord:discord?.status,edition:active?.edition,activity:active?.details,version:'20.507'},null,2));
@@ -171,6 +194,8 @@ function attach(){
  on('savePreset',preset=>{const id=crypto.randomUUID(),p={id,name:String(preset.name||'Preset').slice(0,80),config:merge(DEFAULTS,preset.config||config)};return setConfig({presets:[...config.presets,p].slice(-80)});});
  on('deletePreset',id=>setConfig({presets:config.presets.filter(x=>x.id!==id)}));
  on('applyPreset',id=>{const p=config.presets.find(x=>x.id===id);return p?setConfig({...p.config,presets:config.presets}):state();});
+ on('searchCatalog',request=>catalog.search(request||{}));
+ on('clearCatalog',edition=>{const result=catalog.clear(edition);notify();return result;});
  on('getBrowsers',()=>browsers());
  on('getPwas',()=>pwaShortcuts());
  on('openEdition',(edition,target,browser)=>openEdition(edition,target,browser));
@@ -208,7 +233,7 @@ if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',show);
  app.whenReady().then(()=>{
-  load();attach();discord=new DiscordIpc();bridge();createWindow();createTray();
+  load();catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
   discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
   log('Presence Studio v20.507 started');
  });

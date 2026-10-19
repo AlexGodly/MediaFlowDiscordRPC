@@ -37,6 +37,7 @@
     "files": [
       "main.cjs",
       "core.cjs",
+      "catalog.cjs",
       "preload.cjs",
       "renderer-dist/**/*",
       "assets/**/*",
