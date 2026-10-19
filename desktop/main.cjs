@@ -181,6 +181,8 @@ function attach(){
   return {personal,plus,studio,baseline:{personal:507,plus:436},checkedAt:new Date().toISOString()};
  });
  on('getDiagnostics',()=>({lines:diagnostics,configPath:configFile,bridge:bridgeStatus,discord:discord?.status,active}));
+ on('exportSettings',async()=>{const r=await dialog.showSaveDialog(window,{title:'Export Presence Studio Settings',defaultPath:'MediaFlowPresenceStudio-settings-v20.507.json',filters:[{name:'JSON',extensions:['json']}]});if(r.canceled||!r.filePath)return {ok:false};fs.writeFileSync(r.filePath,JSON.stringify(config,null,2),'utf8');return {ok:true,message:'Settings exported successfully'};});
+ on('importSettings',async()=>{const r=await dialog.showOpenDialog(window,{title:'Import Presence Studio Settings',properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});if(r.canceled||!r.filePaths[0])return {ok:false};const file=r.filePaths[0];if(fs.statSync(file).size>2*1024*1024)throw Error('Settings file is too large');const imported=JSON.parse(fs.readFileSync(file,'utf8'));if(!imported||typeof imported!=='object'||Array.isArray(imported))throw Error('Invalid settings file');config=merge(DEFAULTS,imported);save();applyPresence();return {ok:true,message:'Settings imported successfully'};});
  on('resetSettings',()=>{config=merge(DEFAULTS,{});save();applyPresence();return state();});
  on('pause',()=>setConfig({mode:'off'}));on('resume',()=>setConfig({mode:'automatic'}));
  on('restartBridge',()=>{server?.close();bridgeStatus='Restarting';bridge();return state();});
