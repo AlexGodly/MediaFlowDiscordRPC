@@ -2,7 +2,7 @@
 
 ## Supported sources
 - MediaFlow by Alex Godly — Personal Edition: v507 baseline
-- MediaFlow Plus by Alex Godly — Public Edition: v436 baseline
+- MediaFlow Plus by Alex Godly — Public Edition: v437 baseline
 
 ## Desktop implementation
 - A new React + TypeScript Presence Studio inside a portable Electron Windows executable (replacing the Java-first user experience).
@@ -28,3 +28,8 @@
 - Library and Personal Order retain their real page-specific title counts instead of showing generic Watching text.
 - Manual activity timestamps persist for the session; Personal and Plus override regression tests pass in CI.
 - Release downloads include the portable EXE and browser extension ZIP only, excluding unpacked build helpers.
+
+## Library and runtime compatibility follow-up
+- Personal library metadata now streams in opt-in chunks from its account snapshot into a private local searchable catalogue (up to 120,000 titles).
+- Plus library fallback uses only visible Plus DOM titles when its account snapshot cannot be safely distinguished from Personal on the shared origin; no cross-edition data is copied.
+- Plus page source currently identifies v437 even though its VERSION file is stale at 436. The compatibility baseline has been corrected.

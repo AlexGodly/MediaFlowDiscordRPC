@@ -21,7 +21,7 @@ The new `desktop/` application is built with **Electron, React, TypeScript, and 
 - Presets, export/import settings, appearance themes, accent color, gradients, responsive layout, browser detection and PWA shortcut detection.
 - Open either website/PWA from the Studio and tray. Guided PWA installation.
 - Extension **bundled in the EXE** with **Prepare & Install Extension**: copies its files into a persistent folder and opens browser extension management; the user must still approve/Load unpacked because Chromium prohibits silent personal extension installation.
-- Live preview, diagnostics, recently detected title picker, and update-check controls.
+- Live preview, diagnostics, a privacy-gated full Personal library catalog with search/pagination (up to 120,000 entries), isolated visible-page fallback for Plus, and update-check controls.
 
 ## First-run instructions
 
@@ -42,7 +42,7 @@ The application is **unsigned**. Windows SmartScreen may warn. Only download fro
 - Discord's native SET_ACTIVITY can use Watching/Playing/Listening/Competing types, but **Discord ultimately controls the application header and card rendering**. The display-name option is best-effort on this legacy IPC transport; it is not guaranteed to replace the Discord Developer application name.
 - All images can be selected locally for previews, but files are **not silently uploaded to public hosting**.
 - Web browsers control PWA installation prompts and unpacked-extension permissions. Presence Studio cannot override those controls.
-- The library picker currently displays recently detected titles from this session. Full cloud library discovery is a separate integration task.
+- The library picker supports opt-in local indexing of Personal account snapshots with search, filters, and pagination. Plus safely indexes visible titles only where an account-scoped export is unavailable. No direct Supabase credentials are copied to the app.
 - Compatibility checks can detect version changes; **breaking MediaFlow changes may require new extension/adapter releases**. Future compatibility cannot be guaranteed automatically.
 - Do not expect the optional account XP fields to be present if a particular MediaFlow page does not expose them through the current extension; manually set them in Manual mode when needed.
 
