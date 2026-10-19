@@ -1,0 +1,51 @@
+name: Presence Studio Desktop Windows
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'extension/**'
+      - '.github/workflows/build-desktop.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Node desktop service code
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+          node --check core.cjs
+          node --check ../extension/service-worker.js
+          node --check ../extension/relay.js
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run presence policy tests
+        run: npm test
+      - name: Build React renderer and typecheck
+        run: npm run build
+      - name: Build true portable Windows EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run package
+      - name: Package extension ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path '../extension/*' -DestinationPath 'dist-release/MediaFlowPresenceStudio-extension-v20.507.zip' -CompressionLevel Optimal -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MediaFlowPresenceStudio-v20.507-React-Windows
+          path: |
+            desktop/dist-release/*.exe
+            desktop/dist-release/*.zip
+          if-no-files-found: error
