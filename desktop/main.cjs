@@ -63,7 +63,7 @@ class DiscordIpc{
 // Windows-only fake Discord IPC endpoint for the opt-in CI smoke test.
 function startFakeDiscord(){
  if(process.platform!=='win32')return;
- const endpoint='\\\\\\\\.\\\\pipe\\\\discord-ipc-9';
+ const endpoint='\\\\.\\pipe\\discord-ipc-9';
  testDiscordServer=net.createServer(socket=>{
   let buffer=Buffer.alloc(0);
   socket.on('data',chunk=>{
