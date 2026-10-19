@@ -576,6 +576,28 @@
       const avatar = document.querySelector('.profile-avatar img, .account-avatar img, .sidebar-account-avatar img, .profile-photo img');
       const avatarUrl = avatar?.currentSrc || avatar?.src || '';
       payload.profileImage = /^https:\/\//i.test(avatarUrl) ? avatarUrl : '';
+      // Version-aware public DOM metadata; never mix Plus with Personal cache.
+      const meta = readMeta(readCachedState());
+      payload.level = Number(meta.level) || 0;
+      payload.streak = Number(meta.streak) || 0;
+      const stateObject = readCachedState();
+      payload.xp = Number(stateObject?.xp ?? stateObject?.stats?.xp ?? 0) || 0;
+      payload.xpNext = Number(stateObject?.xpNext ?? stateObject?.stats?.xpNext ?? 0) || 0;
+      const usernameNode = document.querySelector('.sidebar-account-name, .account-name, .profile-name, .user-name, #profile-name');
+      payload.username = String(usernameNode?.value || usernameNode?.textContent || '').trim().slice(0, 100);
+      const dialog = [...document.querySelectorAll('[role="dialog"], .modal.open, .modal.is-open, .modal.show')].find(el => {
+        try { const style = getComputedStyle(el); return style.display !== 'none' && style.visibility !== 'hidden'; } catch { return false; }
+      });
+      const dialogHeading = String(dialog?.querySelector('h1,h2,h3,.modal-title,.dialog-title')?.textContent || '').trim();
+      const context = (dialogHeading || payload.details || '').toLowerCase();
+      payload.action = /edit|editing/.test(context) ? 'Editing' : /log|logging/.test(context) ? 'Logging' :
+        /detail|view/.test(context) ? 'Viewing' : /read/.test(context) ? 'Reading' : 'Watching';
+      const candidateTitle = String(dialog?.querySelector('.title-name,.media-title,.detail-title,.item-title')?.textContent || '').trim();
+      payload.title = (candidateTitle || (payload.largeText !== 'MediaFlow' && payload.largeText !== 'MediaFlow Plus' ? payload.largeText : '')).slice(0,120);
+      if (dialogHeading && /edit|log|detail|history|category|collection/i.test(dialogHeading)) {
+        payload.view = /edit/i.test(dialogHeading) ? 'editing' : /log/i.test(dialogHeading) ? 'logging' : 'details';
+        if (payload.title) payload.details = payload.action + ' ' + payload.title;
+      }
       payload.smallText = IS_PLUS ? 'MediaFlow Plus by Alex Godly' : 'MediaFlow by Alex Godly';
     }
     const signature = JSON.stringify(payload);

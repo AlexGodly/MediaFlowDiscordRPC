@@ -10,6 +10,13 @@ const lastByTab = new Map();
 let lastWire = '';
 let lastPosted = 0;
 let revision = 0;
+let policy = { priority: 'active', fixedEdition: 'personal' };
+let lastPolicyFetch = 0;
+async function syncPolicy() {
+ if (Date.now() - lastPolicyFetch < 8000) return;
+ lastPolicyFetch = Date.now();
+ try { const response = await fetch('http://127.0.0.1:17372/policy',{cache:'no-store'}); if (response.ok) policy = await response.json(); }catch(_){}
+}
 
 function editionFor(url) {
   if (typeof url !== 'string') return null;
@@ -36,7 +43,8 @@ function wireFor(entry) {
     field(p.view, 80), field(p.heading, 150), field(p.source, 100),
     field(p.largeImage || 'mediaflow'), field(p.largeText || 'MediaFlow', 150),
     field(entry.edition, 16), field(p.smallImage || 'mediaflow'),
-    field(p.smallText || 'MediaFlow', 150), field(p.username || '', 100), field(p.profileImage || '')
+    field(p.smallText || 'MediaFlow', 150), field(p.username || '', 100), field(p.profileImage || ''),
+    field(p.title || ''), field(p.action || ''), field(p.level || 0, 10), field(p.streak || 0, 10), field(p.xp || 0, 20), field(p.xpNext || 0, 20)
   ].join('|');
 }
 async function postWire(wire) {
@@ -53,6 +61,7 @@ async function postWire(wire) {
   }
 }
 async function selectAndSend() {
+  await syncPolicy();
   const currentRevision = ++revision;
   const now = Date.now();
   let tabs = [];
@@ -76,9 +85,12 @@ async function selectAndSend() {
     ...value, tab: byId.get(id)
   })).filter(x => x.tab && editionFor(x.tab.url) === x.edition);
   candidates.sort((a, b) => {
+    const aPriority = policy.priority === 'personal' && a.edition === 'personal' || policy.priority === 'plus' && a.edition === 'plus' ? 10 : 0;
+    const bPriority = policy.priority === 'personal' && b.edition === 'personal' || policy.priority === 'plus' && b.edition === 'plus' ? 10 : 0;
     const aRank = a.tab.active && a.tab.windowId === focusedWindowId ? 2 : a.tab.active ? 1 : 0;
     const bRank = b.tab.active && b.tab.windowId === focusedWindowId ? 2 : b.tab.active ? 1 : 0;
-    return bRank - aRank || b.at - a.at;
+    if (policy.priority === 'latest') return b.at - a.at;
+    return bPriority - aPriority || bRank - aRank || b.at - a.at;
   });
   const wire = wireFor(candidates[0] || null);
   if (wire === lastWire && now - lastPosted < PULSE_MS) return;
