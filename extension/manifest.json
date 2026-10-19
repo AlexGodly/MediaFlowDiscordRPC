@@ -23,7 +23,8 @@
         "https://alexgodly.github.io/MediaFlowPlus/*"
       ],
       "js": [
-        "relay.js"
+        "relay.js",
+        "catalog.js"
       ],
       "run_at": "document_idle",
       "world": "ISOLATED"

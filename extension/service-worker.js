@@ -99,7 +99,31 @@ async function selectAndSend() {
 }
 function refresh() { selectAndSend().catch(() => {}); }
 
+// Catalogue is opt-in. Only accept records from our two exact MediaFlow origins.
+async function catalogRequest(message, sender) {
+  const edition=editionFor(sender.tab?.url);
+  if(!edition || message?.edition!==edition) return {ok:false,error:'Edition mismatch'};
+  if(message.type==='MEDIAFLOW_RPC_CATALOG_POLICY'){
+    try{
+      const res=await fetch('http://127.0.0.1:17372/catalog-policy',{cache:'no-store'});
+      return res.ok?await res.json():{enabled:false};
+    }catch{return {enabled:false};}
+  }
+  const phases={MEDIAFLOW_RPC_CATALOG_BEGIN:'begin',MEDIAFLOW_RPC_CATALOG_CHUNK:'chunk',MEDIAFLOW_RPC_CATALOG_END:'end'};
+  if(!(message.type in phases))return {ok:false,error:'Unknown catalogue message'};
+  try{
+    const res=await fetch('http://127.0.0.1:17372/catalog',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        edition,phase:phases[message.type],...message.payload
+      }),cache:'no-store'});
+    return res.ok?await res.json():{ok:false,error:'Catalog service HTTP '+res.status};
+  }catch(err){return {ok:false,error:String(err?.message||err)};}
+}
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type?.startsWith('MEDIAFLOW_RPC_CATALOG_')) {
+    catalogRequest(message,sender).then(sendResponse).catch(error=>sendResponse({ok:false,error:String(error)}));
+    return true;
+  }
   if (message?.type !== 'MEDIAFLOW_RPC_STATE' || !Number.isInteger(sender.tab?.id)) return;
   const edition = editionFor(sender.tab.url);
   if (!edition) { sendResponse({ ok: false, error: 'Unsupported website' }); return; }
