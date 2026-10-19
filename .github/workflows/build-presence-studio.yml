@@ -46,4 +46,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create 20.507 dist/*.zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "v20.507 Beta" --prerelease --notes "Initial dual-edition foundation. MediaFlow Personal v507 and MediaFlow Plus v436 baselines. Windows portable app-image and extension. Full Presence Studio UI and remaining advanced customization are in development."
+          $assets = @(Get-ChildItem -Path dist -Filter "*.zip" | ForEach-Object { $_.FullName })
+          gh release create 20.507 $assets --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "v20.507 Beta" --prerelease --notes "Initial dual-edition foundation. MediaFlow Personal v507 and MediaFlow Plus v436 baselines. Windows portable app-image and extension. Full Presence Studio UI and remaining advanced customization are in development."
