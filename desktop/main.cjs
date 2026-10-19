@@ -10,6 +10,7 @@ const {parseExport}=require('./importer.cjs');
 const PORT=17372,APP='MediaFlow Presence Studio';
 let window=null,tray=null,server=null,exiting=false,config=merge(DEFAULTS,{}),active=null,diagnostics=[],recent=[],bridgeStatus='Not started',configFile='';
 let discord=null,catalog=null,lastExtensionContact=0,selectionPolicy='active',updateStatus=null;
+let testDiscordServer=null,testDiscordMessages=[];
 function log(message){const line=new Date().toLocaleTimeString()+' · '+message;diagnostics.unshift(line);diagnostics=diagnostics.slice(0,120);notify();}
 function load(){configFile=path.join(app.getPath('userData'),'presence-studio.json');try{config=merge(DEFAULTS,JSON.parse(fs.readFileSync(configFile,'utf8')));}catch{config=merge(DEFAULTS,{});}}
 function save(){try{fs.mkdirSync(path.dirname(configFile),{recursive:true});fs.writeFileSync(configFile,JSON.stringify(config,null,2),'utf8');}catch(e){log('Could not save settings: '+e.message);}}
@@ -58,6 +59,34 @@ class DiscordIpc{
   this.frame(1,{cmd:'SET_ACTIVITY',args:{pid:process.pid,activity:this.pending||null},nonce:crypto.randomUUID()});
   this.lastSent=data;this.lastAt=now;this.status=this.pending?'Rich Presence active':'Presence cleared';notify();
  }
+}
+// Windows-only fake Discord IPC endpoint for the opt-in CI smoke test.
+function startFakeDiscord(){
+ if(process.platform!=='win32')return;
+ const endpoint='\\\\\\\\.\\\\pipe\\\\discord-ipc-9';
+ testDiscordServer=net.createServer(socket=>{
+  let buffer=Buffer.alloc(0);
+  socket.on('data',chunk=>{
+   buffer=Buffer.concat([buffer,chunk]);
+   while(buffer.length>=8){
+    const op=buffer.readUInt32LE(0),length=buffer.readUInt32LE(4);
+    if(length>1000000){socket.destroy();return;}
+    if(buffer.length<8+length)return;
+    const payload=buffer.subarray(8,8+length);
+    buffer=buffer.subarray(8+length);
+    let message={};try{message=JSON.parse(payload.toString('utf8'));}catch{}
+    if(op===0){
+     const data=Buffer.from(JSON.stringify({cmd:'DISPATCH',evt:'READY',data:{user:{username:'CI Discord'}}}));
+     const header=Buffer.alloc(8);header.writeUInt32LE(1,0);header.writeUInt32LE(data.length,4);
+     socket.write(Buffer.concat([header,data]));
+    } else if(op===1&&message.cmd==='SET_ACTIVITY'){
+     testDiscordMessages.push(message);
+    }
+   }
+  });
+ });
+ testDiscordServer.on('error',err=>console.error('Fake Discord IPC:',err.message));
+ testDiscordServer.listen(endpoint);
 }
 function allowedOrigin(origin){if(!origin)return true;return /^(chrome-extension|edge-extension):\/\/[a-z0-9-]+$/i.test(origin);}
 function bridge(){
@@ -333,6 +362,13 @@ async function runWindowSmoke(){
   if(forbidden.status!==403){result.ok=false;result.errors.push('Untrusted website can access local bridge');}
   const extensionAllowed=await fetch('http://127.0.0.1:17372/presence',{method:'POST',headers:{Origin:'chrome-extension://abcdefghijklmnopabcdefghijklmnop'},body:'MF5|C'});
   if(extensionAllowed.status!==200){result.ok=false;result.errors.push('Browser extension origin rejected');}
+  if(process.platform==='win32'&&testDiscordServer){
+   const until=Date.now()+12000;
+   while(Date.now()<until&&!testDiscordMessages.length){
+    await new Promise(resolve=>setTimeout(resolve,400));
+   }
+   if(!testDiscordMessages.length){result.ok=false;result.errors.push('Discord IPC handshake/SET_ACTIVITY not observed in Windows fake-pipe test');}
+  }
   console.log('SMOKE RESULT',JSON.stringify(result));
   clearTimeout(timeout);app.exit(result?.ok?0:1);
  }catch(err){console.error('SMOKE ERROR',err);clearTimeout(timeout);app.exit(1);}
@@ -341,7 +377,8 @@ if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',show);
  app.whenReady().then(()=>{
-  load();catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
+  load();if(process.env.MEDIAFLOW_STUDIO_SMOKE==='1'){config.applicationId='123456789012345678';startFakeDiscord();}
+  catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
   updatePreparedExtension();
   if(process.env.MEDIAFLOW_STUDIO_SMOKE==='1')window.webContents.once('did-finish-load',runWindowSmoke);
   discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
@@ -350,5 +387,5 @@ else{
   if(config.updates?.checkAutomatically)setTimeout(()=>checkForUpdates().catch(()=>{}),12000).unref();
  });
  app.on('window-all-closed',()=>{if(!config.launcher.minimizeToTray){exiting=true;app.quit();}});
- app.on('before-quit',()=>{exiting=true;discord?.close();server?.close();});
+ app.on('before-quit',()=>{exiting=true;discord?.close();server?.close();testDiscordServer?.close();});
 }
