@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title MediaFlow RPC - Windows EXE Builder
+title MediaFlow Presence Studio - Windows EXE Builder
 
 echo ============================================================
-echo          MediaFlow RPC - Windows EXE Builder
+echo          MediaFlow Presence Studio - Windows EXE Builder
 echo ============================================================
 echo.
 
@@ -46,24 +46,24 @@ if errorlevel 1 goto :fail
 echo [3/4] Creating portable Windows EXE app image...
 "%JDK_HOME%\bin\jpackage.exe" ^
   --type app-image ^
-  --name "MediaFlow RPC" ^
+  --name "MediaFlow Presence Studio" ^
   --input build\input ^
   --main-jar MediaFlowRPC.jar ^
   --main-class MediaFlowRpcTray ^
   --icon mediaflow.ico ^
   --dest dist ^
   --vendor "Alex Godly" ^
-  --app-version 1.12.0
+  --app-version 20.507.0
 if errorlevel 1 goto :fail
 
 echo [4/4] Creating portable ZIP...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'dist\MediaFlow RPC' -DestinationPath 'dist\MediaFlow_RPC_Portable.zip' -CompressionLevel Optimal -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'dist\MediaFlow Presence Studio' -DestinationPath 'dist\MediaFlowPresenceStudio-v20.507-windows-portable.zip' -CompressionLevel Optimal -Force"
 if errorlevel 1 goto :fail
 
 echo.
 echo BUILD COMPLETE
-echo EXE: %CD%\dist\MediaFlow RPC\MediaFlow RPC.exe
-echo ZIP: %CD%\dist\MediaFlow_RPC_Portable.zip
+echo EXE: %CD%\dist\MediaFlow Presence Studio\MediaFlow Presence Studio.exe
+echo ZIP: %CD%\dist\MediaFlowPresenceStudio-v20.507-windows-portable.zip
 echo.
 pause
 exit /b 0

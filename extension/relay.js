@@ -573,6 +573,9 @@
     if (payload && payload.kind === 'presence') {
       payload.edition = EDITION;
       payload.smallImage = 'mediaflow';
+      const avatar = document.querySelector('.profile-avatar img, .account-avatar img, .sidebar-account-avatar img, .profile-photo img');
+      const avatarUrl = avatar?.currentSrc || avatar?.src || '';
+      payload.profileImage = /^https:\/\//i.test(avatarUrl) ? avatarUrl : '';
       payload.smallText = IS_PLUS ? 'MediaFlow Plus by Alex Godly' : 'MediaFlow by Alex Godly';
     }
     const signature = JSON.stringify(payload);

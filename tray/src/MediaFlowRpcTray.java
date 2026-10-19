@@ -21,8 +21,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 public final class MediaFlowRpcTray {
-    private static final String APP_NAME = "MediaFlow RPC";
+    private static final String APP_NAME = "MediaFlow Presence Studio v20.507";
     private static final String MEDIAFLOW_URL = "https://alexgodly.github.io/MediaFlow/";
+    private static final String MEDIAFLOW_PLUS_URL = "https://alexgodly.github.io/MediaFlowPlus/";
     private static final int BRIDGE_PORT = 17372;
 
     private static TrayIcon trayIcon;
@@ -77,7 +78,7 @@ public final class MediaFlowRpcTray {
             Runtime.getRuntime().halt(0);
             return;
         }
-        log("Starting MediaFlow RPC v12 " + System.getProperty("java.version") + " on " + System.getProperty("os.name"));
+        log("Starting Presence Studio v20.507 " + System.getProperty("java.version") + " on " + System.getProperty("os.name"));
 
         try {
             initTray();
@@ -209,9 +210,15 @@ public final class MediaFlowRpcTray {
 
         menu.addSeparator();
 
-        MenuItem openMediaFlow = new MenuItem("Open MediaFlow");
+        MenuItem openMediaFlow = new MenuItem("Open Personal Edition Website");
         openMediaFlow.addActionListener(e -> openUrl(MEDIAFLOW_URL));
         menu.add(openMediaFlow);
+        MenuItem openPlus = new MenuItem("Open Plus Edition Website");
+        openPlus.addActionListener(e -> openUrl(MEDIAFLOW_PLUS_URL));
+        menu.add(openPlus);
+        MenuItem artwork = new MenuItem("Small Image Preferences…");
+        artwork.addActionListener(e -> EventQueue.invokeLater(MediaFlowRpcTray::showArtworkSettings));
+        menu.add(artwork);
 
         MenuItem settings = new MenuItem("Discord Application ID…");
         settings.addActionListener(e -> EventQueue.invokeLater(() -> showSettings(false)));
@@ -295,6 +302,52 @@ public final class MediaFlowRpcTray {
         setTrayStatus("Discord ID saved — reconnecting");
     }
 
+    private static void showArtworkSettings() {
+        JComboBox<String> mode = new JComboBox<>(new String[] {
+                "MediaFlow logo", "MediaFlow account avatar", "Custom URL or Discord image asset", "No small image"
+        });
+        mode.setSelectedIndex(switch (config.getProperty("smallImageMode", "mediaflow")) {
+            case "account" -> 1;
+            case "custom" -> 2;
+            case "none" -> 3;
+            default -> 0;
+        });
+        JTextField custom = new JTextField(config.getProperty("smallImageCustom", ""), 35);
+        JTextField hover = new JTextField(config.getProperty("smallImageTooltip", "MediaFlow by Alex Godly"), 35);
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.add(new JLabel("Small image source:"));
+        form.add(mode);
+        form.add(Box.createVerticalStrut(10));
+        form.add(new JLabel("Custom HTTPS image URL or Discord asset key:"));
+        form.add(custom);
+        form.add(Box.createVerticalStrut(10));
+        form.add(new JLabel("Hover text:"));
+        form.add(hover);
+        int answer = JOptionPane.showConfirmDialog(null, form, "Presence Studio — Small Image",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (answer != JOptionPane.OK_OPTION) return;
+        String selected = switch (mode.getSelectedIndex()) {
+            case 1 -> "account";
+            case 2 -> "custom";
+            case 3 -> "none";
+            default -> "mediaflow";
+        };
+        if ("custom".equals(selected) && custom.getText().isBlank()) {
+            JOptionPane.showMessageDialog(null, "Enter an image URL or Discord asset key.");
+            return;
+        }
+        if (custom.getText().trim().length() > 2048) {
+            JOptionPane.showMessageDialog(null, "Image URL is too long.");
+            return;
+        }
+        config.setProperty("smallImageMode", selected);
+        config.setProperty("smallImageCustom", custom.getText().trim());
+        config.setProperty("smallImageTooltip", hover.getText().trim());
+        saveConfig();
+        if (bridge != null) bridge.refreshPresence();
+    }
+
     private static void setTrayStatus(String text) {
         EventQueue.invokeLater(() -> {
             if (statusItem != null) {
@@ -362,6 +415,9 @@ public final class MediaFlowRpcTray {
         private volatile long lastPresenceAt = 0L;
         private volatile long lastExtensionContactAt = 0L;
         private volatile String lastDetectedView = "";
+        private volatile String lastEdition = "";
+        private volatile String lastSmallImage = "";
+        private volatile String lastWireMessage = "";
         private volatile String lastDetectedHeading = "";
         private volatile String lastDetectedSource = "";
 
@@ -372,6 +428,10 @@ public final class MediaFlowRpcTray {
 
         void setStatusListener(java.util.function.Consumer<String> listener) {
             statusListener = listener == null ? x -> {} : listener;
+        }
+
+        void refreshPresence() {
+            if (lastWireMessage.startsWith("MF5|P|")) handleMessage(lastWireMessage);
         }
 
         void start() {
@@ -450,6 +510,8 @@ public final class MediaFlowRpcTray {
                             "Details: " + (lastPresenceDetails.isBlank() ? "(none)" : lastPresenceDetails) + "\n" +
                             "State: " + (lastPresenceState.isBlank() ? "(none)" : lastPresenceState) + "\n" +
                             "Large image: " + (lastPresenceImage.isBlank() ? "(none)" : lastPresenceImage) + "\n" +
+                            "Small image: " + (lastSmallImage.isBlank() ? "(none)" : lastSmallImage) + "\n" +
+                            "Edition: " + (lastEdition.isBlank() ? "(none)" : lastEdition) + "\n" +
                             "Detected view: " + (lastDetectedView.isBlank() ? "(none)" : lastDetectedView) + "\n" +
                             "Detected heading: " + (lastDetectedHeading.isBlank() ? "(none)" : lastDetectedHeading) + "\n" +
                             "View source: " + (lastDetectedSource.isBlank() ? "(none)" : lastDetectedSource) + "\n\n" +
@@ -536,18 +598,21 @@ public final class MediaFlowRpcTray {
             if (message == null) return;
             // v12 deliberately ignores MF1/MF2/MF3 packets so stale extension
             // instances cannot overwrite the current Rich Presence.
-            if ("MF4|K".equals(message)) return;
-            if (message.startsWith("MF1|") || message.startsWith("MF2|") || message.startsWith("MF3|")) {
+            if ("MF5|K".equals(message)) return;
+            if (message.startsWith("MF1|") || message.startsWith("MF2|") || message.startsWith("MF3|") || message.startsWith("MF4|")) {
                 log("Ignored legacy extension packet: " + message.substring(0, Math.min(message.length(), 5)));
                 return;
             }
 
-            if ("MF4|C".equals(message)) {
+            if ("MF5|C".equals(message)) {
                 discord.clearPresence();
                 lastPresenceDetails = "";
                 lastPresenceState = "";
                 lastPresenceImage = "";
                 lastDetectedView = "";
+                lastEdition = "";
+                lastSmallImage = "";
+                lastWireMessage = "";
                 lastDetectedHeading = "";
                 lastDetectedSource = "";
                 statusListener.accept("Waiting for MediaFlow activity");
@@ -556,8 +621,8 @@ public final class MediaFlowRpcTray {
             }
 
             String[] parts = message.split("\\|", -1);
-            boolean v4 = parts.length >= 4 && "MF4".equals(parts[0]) && "P".equals(parts[1]);
-            if (!v4) return;
+            boolean v5 = parts.length >= 4 && "MF5".equals(parts[0]) && "P".equals(parts[1]);
+            if (!v5) return;
 
             try {
                 String details = decodeBase64(parts[2]);
@@ -578,7 +643,21 @@ public final class MediaFlowRpcTray {
                 if (largeText == null || largeText.isBlank()) largeText = "MediaFlow";
                 lastPresenceImage = largeImage;
                 lastPresenceAt = System.currentTimeMillis();
-                Presence p = new Presence(details, state, largeImage, largeText);
+                String edition = parts.length > 9 ? decodeBase64(parts[9]) : "personal";
+                String accountImage = parts.length > 13 ? decodeBase64(parts[13]) : "";
+                lastEdition = "plus".equals(edition) ? "plus" : "personal";
+                String imageMode = config.getProperty("smallImageMode", "mediaflow");
+                String smallImage = switch (imageMode) {
+                    case "none" -> "";
+                    case "account" -> accountImage.isBlank() ? "mediaflow" : accountImage;
+                    case "custom" -> config.getProperty("smallImageCustom", "mediaflow");
+                    default -> "mediaflow";
+                };
+                String defaultTooltip = parts.length > 11 ? decodeBase64(parts[11]) : "MediaFlow";
+                String smallText = config.getProperty("smallImageTooltip", defaultTooltip);
+                lastSmallImage = smallImage;
+                lastWireMessage = message;
+                Presence p = new Presence(details, state, largeImage, largeText, smallImage, smallText);
                 discord.setPresence(p);
                 statusListener.accept(details);
                 log("MediaFlow presence received [" + lastDetectedView + "/" + lastDetectedSource + "]: " + details + " | " + state + " | image=" + largeImage);
@@ -940,6 +1019,8 @@ public final class MediaFlowRpcTray {
             String state = discordText(p.state());
             String largeImage = discordImage(p.largeImage());
             String largeText = discordText(p.largeText());
+            String smallImage = p.smallImage() == null || p.smallImage().isBlank() ? "" : discordImage(p.smallImage());
+            String smallText = discordText(p.smallText());
 
             // Discord accepts either an uploaded application asset key or a
             // publicly reachable http(s) URL for Rich Presence image fields.
@@ -950,6 +1031,7 @@ public final class MediaFlowRpcTray {
                     "\"assets\":{" +
                     "\"large_image\":\"" + json(largeImage) + "\"," +
                     "\"large_text\":\"" + json(largeText) + "\"" +
+                    (smallImage.isEmpty() ? "" : ",\"small_image\":\"" + json(smallImage) + "\",\"small_text\":\"" + json(smallText) + "\"") +
                     "}," +
                     "\"instance\":false" +
                     "}";
@@ -1048,5 +1130,5 @@ public final class MediaFlowRpcTray {
         record DiscordFrame(int opcode, byte[] payload) {}
     }
 
-    record Presence(String details, String state, String largeImage, String largeText) {}
+    record Presence(String details, String state, String largeImage, String largeText, String smallImage, String smallText) {}
 }

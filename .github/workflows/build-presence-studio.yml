@@ -1,0 +1,49 @@
+name: Build MediaFlow Presence Studio v20.507
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate extension scripts
+        shell: pwsh
+        run: |
+          node --check extension/service-worker.js
+          node --check extension/relay.js
+          node -e "const m=require('./extension/manifest.json'); if(m.version!=='20.507.0'||m.content_scripts[0].matches.length!==2) process.exit(1)"
+      - name: Compile Java companion
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/classes, build/input, dist | Out-Null
+          javac -encoding UTF-8 --release 17 -d build/classes tray/src/MediaFlowRpcTray.java
+          Copy-Item tray/mediaflow.png build/classes/mediaflow.png
+          jar --create --file build/input/MediaFlowPresenceStudio.jar --main-class MediaFlowRpcTray -C build/classes .
+      - name: Package portable Windows app with bundled runtime
+        shell: pwsh
+        run: |
+          jpackage --type app-image --name "MediaFlow Presence Studio" --input build/input --main-jar MediaFlowPresenceStudio.jar --main-class MediaFlowRpcTray --icon tray/mediaflow.ico --dest dist --vendor "Alex Godly" --app-version 20.507.0
+          Compress-Archive -Path "dist/MediaFlow Presence Studio" -DestinationPath "dist/MediaFlowPresenceStudio-v20.507-windows-portable.zip" -CompressionLevel Optimal -Force
+          Compress-Archive -Path "extension" -DestinationPath "dist/MediaFlowPresenceStudio-extension-v20.507.zip" -CompressionLevel Optimal -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MediaFlowPresenceStudio-v20.507-Windows-Beta
+          path: |
+            dist/*.zip
+          if-no-files-found: error
+      - name: Publish beta release when requested by release commit
+        if: ${{ contains(github.event.head_commit.message, 'release: v20.507 beta') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 20.507 dist/*.zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "v20.507 Beta" --prerelease --notes "Initial dual-edition foundation. MediaFlow Personal v507 and MediaFlow Plus v436 baselines. Windows portable app-image and extension. Full Presence Studio UI and remaining advanced customization are in development."

@@ -29,14 +29,14 @@ function field(value, max = 2048) {
   return utf8Base64(String(value ?? '').slice(0, max));
 }
 function wireFor(entry) {
-  if (!entry) return 'MF4|C';
+  if (!entry) return 'MF5|C';
   const p = entry.payload;
   return [
-    'MF4', 'P', field(p.details, 150), field(p.state, 150),
+    'MF5', 'P', field(p.details, 150), field(p.state, 150),
     field(p.view, 80), field(p.heading, 150), field(p.source, 100),
     field(p.largeImage || 'mediaflow'), field(p.largeText || 'MediaFlow', 150),
     field(entry.edition, 16), field(p.smallImage || 'mediaflow'),
-    field(p.smallText || 'MediaFlow', 150), field(p.username || '', 100)
+    field(p.smallText || 'MediaFlow', 150), field(p.username || '', 100), field(p.profileImage || '')
   ].join('|');
 }
 async function postWire(wire) {
