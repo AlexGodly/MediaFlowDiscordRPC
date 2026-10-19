@@ -2,18 +2,20 @@
 const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,shell,Notification}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),net=require('node:net'),crypto=require('node:crypto'),os=require('node:os');
 const {spawn,execFile}=require('node:child_process');
+const {pipeline}=require('node:stream/promises');
+const {Readable}=require('node:stream');
 const {EDITIONS,DEFAULTS,merge,compile,parseWire}=require('./core.cjs');
 const {Catalog,MAX_BYTES}=require('./catalog.cjs');
 const PORT=17372,APP='MediaFlow Presence Studio';
 let window=null,tray=null,server=null,exiting=false,config=merge(DEFAULTS,{}),active=null,diagnostics=[],recent=[],bridgeStatus='Not started',configFile='';
-let discord=null,catalog=null,lastExtensionContact=0,selectionPolicy='active';
+let discord=null,catalog=null,lastExtensionContact=0,selectionPolicy='active',updateStatus=null;
 function log(message){const line=new Date().toLocaleTimeString()+' · '+message;diagnostics.unshift(line);diagnostics=diagnostics.slice(0,120);notify();}
 function load(){configFile=path.join(app.getPath('userData'),'presence-studio.json');try{config=merge(DEFAULTS,JSON.parse(fs.readFileSync(configFile,'utf8')));}catch{config=merge(DEFAULTS,{});}}
 function save(){try{fs.mkdirSync(path.dirname(configFile),{recursive:true});fs.writeFileSync(configFile,JSON.stringify(config,null,2),'utf8');}catch(e){log('Could not save settings: '+e.message);}}
 function isValidId(s){return /^\d{15,25}$/.test(String(s||'').trim());}
 function currentEntry(){if(config.mode==='manual')return {...config.manual,edition:config.manual.edition||'personal',view:'details'};return active;}
 function rendered(){return compile(currentEntry(),config);}
-function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,catalogSummary:catalog?catalog.meta:{personal:null,plus:null},discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT,extensionConnected:Date.now()-lastExtensionContact<20000,lastContact:lastExtensionContact},diagnostics:diagnostics.slice(0,75)};}
+function state(){return {version:'20.507',config,editions:EDITIONS,active,preview:rendered(),recent,catalogSummary:catalog?catalog.meta:{personal:null,plus:null},updates:updateStatus,discord:{connected:!!discord&&discord.ready,status:discord?discord.status:'Starting',error:discord?.error||''},bridge:{status:bridgeStatus,port:PORT,extensionConnected:Date.now()-lastExtensionContact<20000,lastContact:lastExtensionContact},diagnostics:diagnostics.slice(0,75)};}
 function notify(){if(window&&!window.isDestroyed())window.webContents.send('studio:state',state());refreshTray();}
 function applyPresence(){if(discord)discord.setActivity(rendered());notify();}
 function setConfig(partial){const oldId=config.applicationId,oldMode=config.mode;config=merge(config,partial);if(oldMode!=='manual'&&config.mode==='manual')config.manual.startedAt=Date.now();save();if(discord&&oldId!==config.applicationId){discord.socket?.destroy();discord.disconnect('Discord Application ID updated — reconnecting');}applyPresence();return state();}
@@ -185,6 +187,55 @@ function selectImage(){
   return {path:dest,url:'file:///'+dest.replace(/\\/g,'/'),name:path.basename(file),forDiscord:false,note:'Local files preview in Studio. Discord requires a hosted HTTPS image or registered asset.'};
  });
 }
+async function checkForUpdates(){
+ const readVersion=async edition=>{
+  const url=EDITIONS[edition].url+'index.html';
+  try{
+   const res=await fetch(url,{signal:AbortSignal.timeout(12000),headers:{'Cache-Control':'no-cache'}});
+   if(!res.ok)throw Error('HTTP '+res.status);
+   const html=await res.text();
+   return Number(html.match(/<meta\s+name=["']mediaflow-version["']\s+content=["'](\d+)["']/i)?.[1]) || 'unknown';
+  }catch{return 'unavailable';}
+ };
+ const getRelease=async()=>{
+  try{
+   const res=await fetch('https://api.github.com/repos/AlexGodly/MediaFlowDiscordRPC/releases?per_page=5',{
+    headers:{'User-Agent':'MediaFlow-Presence-Studio'},signal:AbortSignal.timeout(12000)});
+   if(!res.ok)throw Error('GitHub HTTP '+res.status);
+   const data=await res.json();
+   const latest=Array.isArray(data)?data.find(x=>!x.draft):null;
+   if(!latest)return {version:'unavailable',asset:null};
+   const asset=latest.assets?.find(x=>x.name==='MediaFlowPresenceStudio-v20.507-portable.exe')||
+     latest.assets?.find(x=>/^MediaFlowPresenceStudio-v[\d.]+-portable\.exe$/i.test(x.name));
+   return {version:latest.tag_name,url:latest.html_url,asset:asset?{
+    name:asset.name,url:asset.browser_download_url,size:asset.size,digest:asset.digest||'':null}};
+  }catch{return {version:'unavailable',asset:null};}
+ };
+ const [personal,plus,rpc]=await Promise.all([readVersion('personal'),readVersion('plus'),getRelease()]);
+ const changed=Number(personal)>Number(EDITIONS.personal.version)||Number(plus)>Number(EDITIONS.plus.version);
+ const latest={personal,plus,rpc,changed,checkedAt:new Date().toISOString()};
+ const before=JSON.stringify(updateStatus);updateStatus=latest;notify();
+ if(changed&&config.updates?.checkAutomatically&&before!==JSON.stringify(latest))emitNotification(APP,'A MediaFlow edition changed. Compatibility should be checked.');
+ return latest;
+}
+async function downloadUpdate(){
+ const info=updateStatus||await checkForUpdates(), asset=info.rpc?.asset;
+ if(!asset||!/^https:\/\/github\.com\/AlexGodly\/MediaFlowDiscordRPC\/releases\/download\//i.test(asset.url))
+  throw Error('No verified official GitHub portable asset found');
+ if(!/\.exe$/i.test(asset.name)||asset.size>500*1024*1024||asset.size<1024*1024)throw Error('Unexpected download asset');
+ const res=await fetch(asset.url,{signal:AbortSignal.timeout(120000)});
+ if(!res.ok||!res.body)throw Error('Download failed, HTTP '+res.status);
+ const base=path.join(app.getPath('downloads'),path.basename(asset.name));
+ const tmp=base+'.downloading';
+ await pipeline(Readable.fromWeb(res.body),fs.createWriteStream(tmp));
+ const stats=fs.statSync(tmp);if(stats.size!==asset.size){fs.unlinkSync(tmp);throw Error('Download size mismatch');}
+ if(/^sha256:[0-9a-f]{64}$/i.test(asset.digest)){
+  const digest=crypto.createHash('sha256').update(fs.readFileSync(tmp)).digest('hex');
+  if('sha256:'+digest!==asset.digest.toLowerCase()){fs.unlinkSync(tmp);throw Error('SHA256 mismatch');}
+ }
+ fs.renameSync(tmp,base);shell.showItemInFolder(base);
+ return {ok:true,path:base,guide:'Official update downloaded to Downloads. Close Presence Studio and run the new EXE to replace this version.'};
+}
 function attach(){
  const on=(name,handler)=>ipcMain.handle('studio:'+name,async(_, ...args)=>handler(...args));
  on('getState',()=>state());
@@ -216,12 +267,8 @@ function attach(){
  on('selectImage',()=>selectImage());
  on('openExternal',url=>{if(typeof url==='string'&&/^https:\/\//.test(url)){shell.openExternal(url);return {ok:true};}return {ok:false};});
  on('setStartup',enabled=>{app.setLoginItemSettings({openAtLogin:!!enabled,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});return setConfig({launcher:{startWithWindows:!!enabled}});});
- on('checkUpdates',async()=>{
-  const check=async url=>{try{const res=await fetch(url,{signal:AbortSignal.timeout(8000)});return res.ok?(await res.text()).trim():'unknown';}catch{return 'unavailable';}};
-  const [personal,plus]=await Promise.all([check('https://raw.githubusercontent.com/AlexGodly/MediaFlow/main/VERSION'),check('https://raw.githubusercontent.com/AlexGodly/MediaFlowPlus/main/VERSION')]);
-  let studio='unavailable';try{const res=await fetch('https://api.github.com/repos/AlexGodly/MediaFlowDiscordRPC/releases/latest',{headers:{'User-Agent':APP},signal:AbortSignal.timeout(8000)});if(res.ok){studio=(await res.json()).tag_name;}}catch{}
-  return {personal,plus,studio,baseline:{personal:507,plus:436},checkedAt:new Date().toISOString()};
- });
+ on('checkUpdates',()=>checkForUpdates());
+ on('downloadUpdate',()=>downloadUpdate());
  on('getDiagnostics',()=>({lines:diagnostics,configPath:configFile,bridge:bridgeStatus,discord:discord?.status,active}));
  on('exportSettings',async()=>{const r=await dialog.showSaveDialog(window,{title:'Export Presence Studio Settings',defaultPath:'MediaFlowPresenceStudio-settings-v20.507.json',filters:[{name:'JSON',extensions:['json']}]});if(r.canceled||!r.filePath)return {ok:false};fs.writeFileSync(r.filePath,JSON.stringify(config,null,2),'utf8');return {ok:true,message:'Settings exported successfully'};});
  on('importSettings',async()=>{const r=await dialog.showOpenDialog(window,{title:'Import Presence Studio Settings',properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});if(r.canceled||!r.filePaths[0])return {ok:false};const file=r.filePaths[0];if(fs.statSync(file).size>2*1024*1024)throw Error('Settings file is too large');const imported=JSON.parse(fs.readFileSync(file,'utf8'));if(!imported||typeof imported!=='object'||Array.isArray(imported))throw Error('Invalid settings file');config=merge(DEFAULTS,imported);save();applyPresence();return {ok:true,message:'Settings imported successfully'};});
@@ -236,6 +283,8 @@ else{
   load();catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
   discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
   log('Presence Studio v20.507 started');
+  const interval=setInterval(()=>{if(config.updates?.checkAutomatically)checkForUpdates().catch(()=>{});},6*60*60*1000);interval.unref();
+  if(config.updates?.checkAutomatically)setTimeout(()=>checkForUpdates().catch(()=>{}),12000).unref();
  });
  app.on('window-all-closed',()=>{if(!config.launcher.minimizeToTray){exiting=true;app.quit();}});
  app.on('before-quit',()=>{exiting=true;discord?.close();server?.close();});
