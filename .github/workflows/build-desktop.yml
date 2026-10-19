@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: '22'
       - name: Check Node desktop service code
+        shell: bash
         run: |
           node --check main.cjs
           node --check preload.cjs

@@ -208,7 +208,7 @@ async function checkForUpdates(){
    const asset=latest.assets?.find(x=>x.name==='MediaFlowPresenceStudio-v20.507-portable.exe')||
      latest.assets?.find(x=>/^MediaFlowPresenceStudio-v[\d.]+-portable\.exe$/i.test(x.name));
    return {version:latest.tag_name,url:latest.html_url,asset:asset?{
-    name:asset.name,url:asset.browser_download_url,size:asset.size,digest:asset.digest||'':null}};
+    name:asset.name,url:asset.browser_download_url,size:asset.size,digest:asset.digest||''}:null};
   }catch{return {version:'unavailable',asset:null};}
  };
  const [personal,plus,rpc]=await Promise.all([readVersion('personal'),readVersion('plus'),getRelease()]);
