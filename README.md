@@ -1,45 +1,59 @@
-# MediaFlow Discord RPC — Presence Studio
+# MediaFlow Discord RPC — Presence Studio v20.507
 
-## v20.507 (initial dual-edition foundation)
+Windows desktop companion for **MediaFlow by Alex Godly — Personal Edition (v507)** and **MediaFlow Plus by Alex Godly — Public Edition (v436)**.
 
-**Personal:** [MediaFlow by Alex Godly](https://alexgodly.github.io/MediaFlow/) — version **507** baseline.  
-**Public:** [MediaFlow Plus by Alex Godly](https://alexgodly.github.io/MediaFlowPlus/) — version **436** observed at development start.
+**Version convention:** v<RPC-project version>.<Personal MediaFlow compatibility baseline>. Plus has its own independently tracked baseline.
 
-The version convention is `v<RPC project version>.<Personal MediaFlow compatibility baseline>`.
-Plus compatibility is tracked independently, not implied by the 507 suffix.
+## The new desktop application
 
-### Delivered foundation
+The new `desktop/` application is built with **Electron, React, TypeScript, and Vite**, and is packaged as one **portable Windows EXE**; no Java installation or installer is required. The prior Java tray companion remains in `tray/` solely as a legacy fallback. **Do not run both together**: they share local bridge port 17372.
 
-- Chrome/Edge-compatible Manifest V3 extension targets both editions and standalone Chromium PWA tabs where content scripts are available.
-- Browser extension arbitrates concurrent MediaFlow tabs and windows (foreground tab wins, followed by most recently active), with heartbeat and stale-tab expiry; closing one edition won't clear the other.
-- Both editions are identified on the local bridge, with no Personal account-cache access while browsing Plus.
-- Existing Discord local IPC connector and dynamic title-cover artwork remain the operational baseline, using a new MF5 bridge protocol to isolate old extension packets.
-- The Windows tray now opens either edition website and provides real small-image configuration (MediaFlow logo, account avatar where detectable, custom URL/asset key, or none) with customizable hover text.
-- Automated Windows app-image and extension packaging is configured by GitHub Actions.
+### Implemented
 
-### Install (development build)
+- Beautiful responsive desktop Studio, native system tray and Windows startup preference.
+- Discord desktop IPC bridge via application ID. No bot token, Discord OAuth, buttons, or clickable media/profile URLs.
+- Personal and Plus activity detection through a single Chrome/Edge/Brave MV3 extension, including active tab arbitration and edition priority rules.
+- Automatic, Manual and Off modes; custom title, cover, activity type, state/details templates, variable display, title-first or MediaFlow-first naming preferences (subject to Discord client restrictions).
+- Activity visibility rules, privacy settings, user name, level, XP, streak and profile image fields when available from the website.
+- Custom small artwork: MediaFlow logo, profile avatar URL, custom online URL/asset key, or none. Large artwork: title cover, custom online URL/asset key, or none.
+- Local file selection with managed image storage and local preview. **Discord cannot display a local file path**: hosting or an uploaded Discord application asset is required for actual Discord artwork.
+- Separately customizable Personal and Plus message templates and mini-images.
+- Presets, export/import settings, appearance themes, accent color, gradients, responsive layout, browser detection and PWA shortcut detection.
+- Open either website/PWA from the Studio and tray. Guided PWA installation.
+- Extension **bundled in the EXE** with **Prepare & Install Extension**: copies its files into a persistent folder and opens browser extension management; the user must still approve/Load unpacked because Chromium prohibits silent personal extension installation.
+- Live preview, diagnostics, recently detected title picker, and update-check controls.
 
-1. Extract the Windows portable app-image ZIP and run its EXE from inside the extracted folder (no separate Java installation). **The EXE is not yet a single-file portable binary.**
-2. Configure your Discord **Application ID** in the tray companion. No token or OAuth is required.
-3. In Chrome/Edge/Brave, open the extensions page, enable Developer mode, and choose **Load unpacked**, selecting the extracted `extension` folder.
-4. Open either MediaFlow website or the installed browser PWA.
-5. Use the tray diagnostics screen to troubleshoot any connection problem.
+## First-run instructions
 
-Never enable multiple old extension versions simultaneously.
+1. Download `MediaFlowPresenceStudio-v20.507-portable.exe` from [Releases](https://github.com/AlexGodly/MediaFlowDiscordRPC/releases/tag/20.507).
+2. **Exit the old Java MediaFlow RPC** and disable/remove any older extension. Only one companion may use port 17372.
+3. Double-click the portable EXE. Open **Settings** and enter your **Discord Application ID** (not a token or secret). Keep Discord desktop running.
+4. Open **Editions & PWA**, select Chrome, Edge or Brave, then click **Prepare & Install Extension**.
+5. In the browser's extensions page, turn on Developer mode and choose **Load unpacked**. Pick the prepared extension directory shown by Presence Studio.
+6. Open MediaFlow Personal or MediaFlow Plus, in the website or installed PWA. Verify presence in **Activity Monitor**.
+7. Customize visibility, activity name preference, artwork and templates in **Presence Studio**.
 
-### Planned next work
+The application is **unsigned**. Windows SmartScreen may warn. Only download from the project's official GitHub release.
 
-The feature-complete **Presence Studio** UI (React/TypeScript), presets, rules, XP/streak visibility, local-image import and management, browser onboarding, PWA installer/launcher, dynamic activity names (subject to Discord support), and automatic compatibility updates are **not yet implemented** in this initial foundation. Until tested, treat this release as **Beta**, not Stable.
+## Technical notes
 
-### Safety and privacy
+- Settings are stored locally in Electron's userData folder. Content-script activity is delivered to `http://127.0.0.1:17372/presence` using the MF5 protocol.
+- The local browser bridge restricts web origins; do not expose it outside loopback.
+- Discord's native SET_ACTIVITY can use Watching/Playing/Listening/Competing types, but **Discord ultimately controls the application header and card rendering**. The display-name option is best-effort on this legacy IPC transport; it is not guaranteed to replace the Discord Developer application name.
+- All images can be selected locally for previews, but files are **not silently uploaded to public hosting**.
+- Web browsers control PWA installation prompts and unpacked-extension permissions. Presence Studio cannot override those controls.
+- The library picker currently displays recently detected titles from this session. Full cloud library discovery is a separate integration task.
+- Compatibility checks can detect version changes; **breaking MediaFlow changes may require new extension/adapter releases**. Future compatibility cannot be guaranteed automatically.
+- Do not expect the optional account XP fields to be present if a particular MediaFlow page does not expose them through the current extension; manually set them in Manual mode when needed.
 
-No Discord buttons or clickable profile/image links are sent. The local RPC bridge listens on 127.0.0.1. Image URLs need to be reachable by Discord; selecting a local image must never upload it without explicit consent.
+## Development
 
-### Beta limitations
+```bash
+cd desktop
+npm install
+npm test
+npm run build
+npm run package
+```
 
-- The desktop UI is still the legacy tray/Swing shell, not yet the requested React/Tauri Presence Studio.
-- Installed-PWA detection and guided browser-extension/PWA setup remain to be implemented.
-- No dynamic Discord application-name override, independent XP bar rendering, custom local-image hosting, or automatic version-adapter updating is included yet.
-- The Windows ZIP contains the executable **and its bundled runtime folder**; extract the entire ZIP before launching. It is not a single standalone EXE yet.
-- Windows may show unsigned-app warnings; this project has no code-signing certificate.
-- Replacing v12 requires upgrading both the companion and extension together because the new MF5 wire format is intentionally incompatible with old extension packets.
+Windows GitHub Actions builds and validates a portable EXE and extension ZIP automatically. The release stays **Beta** until real Discord and Windows installation tests confirm all supported paths.
