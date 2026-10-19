@@ -6,3 +6,12 @@ test('small-image alternatives',()=>{const e={edition:'plus',view:'community',pr
 test('visibility and mode',()=>{assert.equal(compile({edition:'personal',view:'logging'},merge(DEFAULTS,{when:{logging:false}})),null);assert.equal(compile({edition:'personal',view:'other'},merge(DEFAULTS,{mode:'off'})),null);});
 test('template and safe URL',()=>{assert.equal(safeAsset('file:///C:/secret.png'),'');assert.equal(compile({edition:'plus',view:'other',title:'One Piece',action:'Reading'},DEFAULTS).details,'Reading One Piece');});
 test('MF5 decode',()=>{const e=v=>Buffer.from(String(v)).toString('base64'),w=['MF5','P',e('Watching'),e('Level 10'),e('details'),e(''),e(''),e('mediaflow'),e(''),e('plus')].join('|');assert.equal(parseWire(w).entry.edition,'plus');assert.equal(parseWire('MF4|C'),null);});
+
+test('per-edition overrides can be added incrementally without wiping older fields',()=>{
+ const c1=merge(DEFAULTS,{perEdition:{personal:{detailsTemplate:'Viewing {title}'}}});
+ const c2=merge(c1,{perEdition:{personal:{smallImage:{mode:'none'}}}});
+ assert.equal(c2.perEdition.personal.detailsTemplate,'Viewing {title}');
+ assert.equal(c2.perEdition.personal.smallImage.mode,'none');
+ assert.equal(compile({edition:'personal',view:'details',title:'The Mentalist'},c2).assets.small_image,undefined);
+ assert.equal(compile({edition:'plus',view:'details',title:'One Piece'},c2).assets.small_image,'mediaflow');
+});
