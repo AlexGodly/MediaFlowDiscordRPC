@@ -74,7 +74,10 @@ function bridge(){
    lastExtensionContact=Date.now();
    if(parsed.kind==='clear'){active=null;log('Browser activity cleared');}
    else{
+    const previous=active;
     active=parsed.entry;active.source=active.source||'extension';
+    const same=previous&&previous.edition===active.edition&&previous.title===active.title&&previous.view===active.view&&previous.action===active.action;
+    active.startedAt=same?previous.startedAt||Date.now():Date.now();
     const title=active.title||active.details;
     if(title&&!recent.some(x=>x.title===title&&x.edition===active.edition))recent=[{title,edition:active.edition,cover:active.largeImage,action:active.action,at:Date.now()},...recent].slice(0,45);
    }
@@ -110,6 +113,7 @@ function createTray(){
   {label:'Manual Presence',type:'radio',checked:config.mode==='manual',click:()=>setConfig({mode:'manual'})},
   {label:'Disable Presence',type:'radio',checked:config.mode==='off',click:()=>setConfig({mode:'off'})},
   {type:'separator'},
+  ...(config.presets||[]).slice(0,10).map(p=>({label:'Preset: '+p.name,click:()=>setConfig({...p.config,presets:config.presets})})),
   {label:'Reconnect Discord',click:()=>{discord?.socket?.destroy();discord?.disconnect('Reconnecting');}},
   {label:'Exit Presence Studio',click:()=>{exiting=true;app.quit();}}
  ]);
@@ -162,7 +166,7 @@ function attach(){
  const on=(name,handler)=>ipcMain.handle('studio:'+name,async(_, ...args)=>handler(...args));
  on('getState',()=>state());
  on('saveConfig',value=>setConfig(value||{}));
- on('setMode',mode=>setConfig({mode:['off','manual','automatic'].includes(mode)?mode:'automatic'}));
+ on('setMode',mode=>setConfig({mode:['off','manual','automatic'].includes(mode)?mode:'automatic',manual:{startedAt:Date.now()}}));
  on('updateManual',m=>setConfig({manual:{...config.manual,...m}}));
  on('savePreset',preset=>{const id=crypto.randomUUID(),p={id,name:String(preset.name||'Preset').slice(0,80),config:merge(DEFAULTS,preset.config||config)};return setConfig({presets:[...config.presets,p].slice(-80)});});
  on('deletePreset',id=>setConfig({presets:config.presets.filter(x=>x.id!==id)}));
@@ -186,7 +190,7 @@ function attach(){
  on('openExtensions',browser=>{const b=browser||config.launcher.browser;const url=b==='edge'?'edge://extensions/':'chrome://extensions/';const exe=findBrowser(b);if(exe){spawn(exe,[url],{detached:true,stdio:'ignore'}).unref();return {ok:true};}return {ok:false,error:'Please open your browser extension settings manually.'};});
  on('selectImage',()=>selectImage());
  on('openExternal',url=>{if(typeof url==='string'&&/^https:\/\//.test(url)){shell.openExternal(url);return {ok:true};}return {ok:false};});
- on('setStartup',enabled=>{app.setLoginItemSettings({openAtLogin:!!enabled});return setConfig({launcher:{startWithWindows:!!enabled}});});
+ on('setStartup',enabled=>{app.setLoginItemSettings({openAtLogin:!!enabled,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});return setConfig({launcher:{startWithWindows:!!enabled}});});
  on('checkUpdates',async()=>{
   const check=async url=>{try{const res=await fetch(url,{signal:AbortSignal.timeout(8000)});return res.ok?(await res.text()).trim():'unknown';}catch{return 'unavailable';}};
   const [personal,plus]=await Promise.all([check('https://raw.githubusercontent.com/AlexGodly/MediaFlow/main/VERSION'),check('https://raw.githubusercontent.com/AlexGodly/MediaFlowPlus/main/VERSION')]);
@@ -205,7 +209,7 @@ else{
  app.on('second-instance',show);
  app.whenReady().then(()=>{
   load();attach();discord=new DiscordIpc();bridge();createWindow();createTray();
-  discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true});
+  discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
   log('Presence Studio v20.507 started');
  });
  app.on('window-all-closed',()=>{if(!config.launcher.minimizeToTray){exiting=true;app.quit();}});
