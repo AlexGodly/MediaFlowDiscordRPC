@@ -588,15 +588,29 @@
       payload.themeMode = document.documentElement.classList.contains('light') || document.body.classList.contains('light') ? 'light' : 'midnight';
       const usernameNode = document.querySelector('.sidebar-account-name, .account-name, .profile-name, .user-name, #profile-name');
       payload.username = String(usernameNode?.value || usernameNode?.textContent || '').trim().slice(0, 100);
-      const dialog = [...document.querySelectorAll('[role="dialog"], .modal.open, .modal.is-open, .modal.show')].find(el => {
+      const dialog = [...document.querySelectorAll('[role="dialog"], .modal.open, .modal.is-open, .modal.show, .title-detail-modal, .title-details-modal, .detail-modal, .modal-overlay .modal, .modal-overlay .dialog')].find(el => {
         try { const style = getComputedStyle(el); return style.display !== 'none' && style.visibility !== 'hidden'; } catch { return false; }
       });
-      const dialogHeading = String(dialog?.querySelector('h1,h2,h3,.modal-title,.dialog-title')?.textContent || '').trim();
-      const context = (dialogHeading || payload.details || '').toLowerCase();
-      payload.action = /edit|editing/.test(context) ? 'Editing' : /log|logging/.test(context) ? 'Logging' :
-        /detail|view/.test(context) ? 'Viewing' : /read/.test(context) ? 'Reading' : 'Watching';
-      const candidateTitle = String(dialog?.querySelector('.title-name,.media-title,.detail-title,.item-title')?.textContent || '').trim();
+      const dialogHeading = clean(dialog?.querySelector('h1,h2,h3,.modal-title,.dialog-title')?.textContent || '');
+      const dialogTitle = clean(dialog?.querySelector('[data-role="title-name"],.title-details-name,.details-title,.detail-title,.title-name,.media-title,.item-title,.modal-media-title')?.textContent || '');
+      const editTitle = clean(dialog?.querySelector('input[name="title"],input[data-field="title"],input#title-input')?.value || '');
+      const descriptor = clean(dialog?.className)+' '+clean(dialog?.getAttribute('aria-label'))+' '+dialogHeading;
+      const context = (descriptor || payload.details || '').toLowerCase();
+      const isTitleDetails = !!dialog && (/title.?detail|media.?detail|detail.?modal|view.?title/.test(context) ||
+        !!dialog.querySelector('.title-details-cover,.details-cover,.detail-cover,[data-title-id]'));
+      const isEditing = !!dialog && /edit.?title|edit.?media|editing|title.?edit/.test(context);
+      const isLogging = !!dialog && /advanced.?logging|consumption.?log|log.?title|batch.?log/.test(context);
+      payload.action = isEditing ? 'Editing' : isLogging ? 'Logging' : isTitleDetails ? 'Viewing' :
+        /read/.test(context) ? 'Reading' : 'Watching';
+      const headingAsTitle = dialogHeading && !/^(edit|add|log|detail|settings|history|library|collection|category|mediaflow|confirm)/i.test(dialogHeading) ? dialogHeading : '';
+      const candidateTitle = dialogTitle || editTitle || (isTitleDetails?headingAsTitle:'');
       payload.title = (candidateTitle || (payload.largeText !== 'MediaFlow' && payload.largeText !== 'MediaFlow Plus' ? payload.largeText : '')).slice(0,120);
+      const cover = dialog?.querySelector('.title-details-cover img,.details-cover img,.detail-cover img,.modal-cover img,.title-cover img');
+      const coverUrl = cover?.currentSrc || cover?.src || '';
+      if (/^https:\/\//i.test(coverUrl) && (isTitleDetails || isEditing || isLogging)) {
+        payload.largeImage = coverUrl;
+        payload.largeText = payload.title || payload.largeText;
+      }
       const cataloged = cachedLibraryByTitle.get(clean(payload.title).toLowerCase()) || null;
       payload.category = clean(cataloged?.category || dialog?.querySelector('[data-category]')?.getAttribute('data-category') || '');
       payload.status = clean(cataloged?.status || dialog?.querySelector('[data-status]')?.getAttribute('data-status') || '');
@@ -604,8 +618,8 @@
       payload.total = Number(cataloged?.total) || 0;
       payload.siteVersion = clean(document.querySelector('meta[name="mediaflow-version"]')?.content || '', 20);
 
-      if (dialogHeading && /edit|log|detail|history|category|collection/i.test(dialogHeading)) {
-        payload.view = /edit/i.test(dialogHeading) ? 'editing' : /log/i.test(dialogHeading) ? 'logging' : 'details';
+      if (isEditing || isLogging || isTitleDetails) {
+        payload.view = isEditing ? 'editing' : isLogging ? 'logging' : 'details';
         if (payload.title) payload.details = payload.action + ' ' + payload.title;
       }
       payload.smallText = IS_PLUS ? 'MediaFlow Plus by Alex Godly' : 'MediaFlow by Alex Godly';
