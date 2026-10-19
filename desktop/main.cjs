@@ -59,7 +59,7 @@ class DiscordIpc{
   this.lastSent=data;this.lastAt=now;this.status=this.pending?'Rich Presence active':'Presence cleared';notify();
  }
 }
-function allowedOrigin(origin){if(!origin)return true;return /^(chrome-extension|edge-extension):\/\/[a-z0-9-]+$/i.test(origin)||origin==='https://alexgodly.github.io';}
+function allowedOrigin(origin){if(!origin)return true;return /^(chrome-extension|edge-extension):\/\/[a-z0-9-]+$/i.test(origin);}
 function bridge(){
  server=http.createServer((req,res)=>{
   const origin=req.headers.origin||'';
@@ -329,6 +329,10 @@ async function runWindowSmoke(){
     }catch(e){misses.push('IPC: '+e.message)}
     return {ok:misses.length===0,errors:misses}
    })()`);
+  const forbidden=await fetch('http://127.0.0.1:17372/presence',{method:'POST',headers:{Origin:'https://alexgodly.github.io'},body:'MF5|C'});
+  if(forbidden.status!==403){result.ok=false;result.errors.push('Untrusted website can access local bridge');}
+  const extensionAllowed=await fetch('http://127.0.0.1:17372/presence',{method:'POST',headers:{Origin:'chrome-extension://abcdefghijklmnopabcdefghijklmnop'},body:'MF5|C'});
+  if(extensionAllowed.status!==200){result.ok=false;result.errors.push('Browser extension origin rejected');}
   console.log('SMOKE RESULT',JSON.stringify(result));
   clearTimeout(timeout);app.exit(result?.ok?0:1);
  }catch(err){console.error('SMOKE ERROR',err);clearTimeout(timeout);app.exit(1);}
