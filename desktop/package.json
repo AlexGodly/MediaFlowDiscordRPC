@@ -1,0 +1,54 @@
+{
+  "name": "mediaflow-presence-studio",
+  "version": "20.507.0",
+  "private": true,
+  "description": "MediaFlow Presence Studio for Personal and Plus",
+  "main": "main.cjs",
+  "author": "Alex Godly",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "test": "node --test tests/*.test.cjs",
+    "package": "electron-builder --win portable --x64 --publish never",
+    "dev": "vite",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.0"
+  },
+  "build": {
+    "appId": "com.alexgodly.mediaflow.presencestudio",
+    "productName": "MediaFlow Presence Studio",
+    "directories": {
+      "output": "dist-release"
+    },
+    "files": [
+      "main.cjs",
+      "core.cjs",
+      "preload.cjs",
+      "renderer-dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "assets/mediaflow.ico",
+      "artifactName": "MediaFlowPresenceStudio-v20.507-portable.exe"
+    }
+  }
+}
