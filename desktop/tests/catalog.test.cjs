@@ -23,3 +23,18 @@ test('catalog metadata sanitization and transfer integrity',()=>{
  assert.throws(()=>c.finish({edition:'personal',batchId:'transfer-y-123'}),/Incomplete/);
  fs.rmSync(dir,{recursive:true,force:true});
 });
+test('catalog handles a 100,000-title library with pagination',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mf-catalog-'));const c=new Catalog(dir);
+ const id='stress-100000-123';const total=100000;
+ c.begin({edition:'personal',batchId:id,total,siteVersion:'507',source:'test'});
+ for(let offset=0;offset<total;offset+=250){
+  const items=Array.from({length:250},(_,i)=>({id:String(offset+i),title:'Media title '+(offset+i),category:'TV Series',status:'Watching'}));
+  const r=c.chunk({edition:'personal',batchId:id,offset,items});
+  assert.equal(r.received,offset+250);
+ }
+ assert.equal(c.finish({edition:'personal',batchId:id}).count,total);
+ const page=c.search({edition:'personal',query:'Media title 999',offset:0,limit:15});
+ assert.ok(page.total>0&&page.items.length<=15);
+ assert.equal(c.search({edition:'personal',offset:99990,limit:50}).items.length,10);
+ fs.rmSync(dir,{recursive:true,force:true});
+});
