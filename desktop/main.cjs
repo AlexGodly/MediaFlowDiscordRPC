@@ -43,7 +43,7 @@ class DiscordIpc{
  onData(data){this.buffer=Buffer.concat([this.buffer,data]);while(this.buffer.length>=8){const op=this.buffer.readUInt32LE(0),len=this.buffer.readUInt32LE(4);if(len>4*1024*1024){this.socket?.destroy();return;}if(this.buffer.length<8+len)return;const raw=this.buffer.subarray(8,8+len).toString();this.buffer=this.buffer.subarray(8+len);
   let msg={};try{msg=JSON.parse(raw);}catch{}
   if(op===2||op===1&&msg.evt==='ERROR'){this.error=JSON.stringify(msg.data||msg).slice(0,300);log('Discord RPC response: '+this.error);continue;}
-  if(op===1&&(msg.evt==='READY'||msg.cmd==='DISPATCH'&&msg.evt==='READY')){this.ready=true;this.connecting=false;this.status='Connected to Discord';this.lastSent='';log('Discord connected');this.sendIfReady();}
+  if(op===1&&(msg.evt==='READY'||msg.cmd==='DISPATCH'&&msg.evt==='READY')){this.ready=true;this.connecting=false;this.status='Connected to Discord';this.lastSent='';log('Discord connected');emitNotification('MediaFlow Presence Studio','Connected to Discord desktop');this.sendIfReady();}
  }}
  sendIfReady(){if(!this.ready||!this.socket||!isValidId(config.applicationId))return;
   const data=this.pending?JSON.stringify(this.pending):'null';
