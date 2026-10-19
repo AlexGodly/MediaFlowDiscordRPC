@@ -23,3 +23,8 @@
 - Full cloud library search is not implemented; the current Studio offers session-recent detected titles.
 - Some activity, XP and avatar fields require site-side instrumentation to remain reliable across future MediaFlow updates.
 - This is a **Beta** release while live Windows/Discord integration needs validation. 
+
+## Presence fixes included in the updated build
+- Library and Personal Order retain their real page-specific title counts instead of showing generic Watching text.
+- Manual activity timestamps persist for the session; Personal and Plus override regression tests pass in CI.
+- Release downloads include the portable EXE and browser extension ZIP only, excluding unpacked build helpers.
