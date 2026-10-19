@@ -55,9 +55,11 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
-          $files = @(Get-ChildItem -Path dist-release -Include '*.exe','*.zip' -Recurse | ForEach-Object { $_.FullName })
-          if ($files.Count -lt 2) { throw 'Release artifacts missing' }
+          $files = @((Get-ChildItem -Path dist-release -File | Where-Object { $_.Name -in @('MediaFlowPresenceStudio-v20.507-portable.exe','MediaFlowPresenceStudio-extension-v20.507.zip') }) | ForEach-Object { $_.FullName })
+          if ($files.Count -ne 2) { throw 'Release artifacts missing' }
           gh release upload 20.507 $files --repo "${{ github.repository }}" --clobber
           gh release delete-asset 20.507 MediaFlowPresenceStudio-v20.507-windows-portable.zip --repo "${{ github.repository }}" --yes
+          gh release delete-asset 20.507 elevate.exe --repo "${{ github.repository }}" --yes 2>$null; $global:LASTEXITCODE = 0
+          gh release delete-asset 20.507 MediaFlow.Presence.Studio.exe --repo "${{ github.repository }}" --yes 2>$null; $global:LASTEXITCODE = 0
           gh release edit 20.507 --repo "${{ github.repository }}" --title 'v20.507 Beta — Desktop Presence Studio' --prerelease --notes 'New Electron + React portable EXE for MediaFlow Personal v507 and Plus v436. Includes a native Windows tray, Discord IPC, automatic/manual/off modes, presence templates, configurable statistics and activity visibility, title and profile artwork controls, independent edition rules, presets, appearance themes, connection diagnostics, PWA/website launching, and guided bundled extension setup. IMPORTANT: This remains a beta because live Discord and PWA integration require Windows testing, automated PWA/extension installation is browser-restricted, full cloud-library search and public hosting for locally selected Discord artwork are not implemented, and changing the app display name depends on Discord client support.'
           gh api -X PATCH "/repos/${{ github.repository }}/git/refs/tags/20.507" -f sha="${{ github.sha }}" -F force=true | Out-Null
