@@ -38,3 +38,12 @@ test('catalog handles a 100,000-title library with pagination',()=>{
  assert.equal(c.search({edition:'personal',offset:99990,limit:50}).items.length,10);
  fs.rmSync(dir,{recursive:true,force:true});
 });
+
+test('directly imported title library stays isolated by edition',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mf-import-')),c=new Catalog(dir);
+ const rows=[{title:'The Mentalist',cover:'https://x.test/mental.jpg',status:'Watching'}, {title:'The Mentalist',status:'Completed'},{title:'One Piece'}];
+ assert.equal(c.import('personal',rows).count,2);
+ assert.equal(c.search({edition:'plus'}).total,0);
+ assert.equal(c.search({edition:'personal',query:'mental'}).items[0].status,'Completed');
+ fs.rmSync(dir,{recursive:true,force:true});
+});

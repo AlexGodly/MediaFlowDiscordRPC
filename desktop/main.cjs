@@ -6,6 +6,7 @@ const {pipeline}=require('node:stream/promises');
 const {Readable}=require('node:stream');
 const {EDITIONS,DEFAULTS,merge,compile,parseWire}=require('./core.cjs');
 const {Catalog,MAX_BYTES}=require('./catalog.cjs');
+const {parseExport}=require('./importer.cjs');
 const PORT=17372,APP='MediaFlow Presence Studio';
 let window=null,tray=null,server=null,exiting=false,config=merge(DEFAULTS,{}),active=null,diagnostics=[],recent=[],bridgeStatus='Not started',configFile='';
 let discord=null,catalog=null,lastExtensionContact=0,selectionPolicy='active',updateStatus=null;
@@ -258,6 +259,20 @@ function attach(){
  on('savePreset',preset=>{const id=crypto.randomUUID(),p={id,name:String(preset.name||'Preset').slice(0,80),config:merge(DEFAULTS,preset.config||config)};return setConfig({presets:[...config.presets,p].slice(-80)});});
  on('deletePreset',id=>setConfig({presets:config.presets.filter(x=>x.id!==id)}));
  on('applyPreset',id=>{const p=config.presets.find(x=>x.id===id);return p?setConfig({...p.config,presets:config.presets}):state();});
+ on('importCatalog',async edition=>{
+  if(!EDITIONS[edition])throw Error('Invalid edition');
+  const picked=await dialog.showOpenDialog(window,{
+   title:'Import '+(edition==='plus'?'MediaFlow Plus':'MediaFlow Personal')+' Library',
+   filters:[{name:'Library exports',extensions:['json','csv']}],properties:['openFile']
+  });
+  if(picked.canceled||!picked.filePaths?.[0])return {ok:false,canceled:true};
+  const file=picked.filePaths[0];
+  if(fs.statSync(file).size>75*1024*1024)throw Error('Export exceeds the 75 MB import limit');
+  const rows=parseExport(fs.readFileSync(file,'utf8'),file);
+  const result=catalog.import(edition,rows,'Local import: '+path.basename(file));
+  log('Imported '+result.count+' '+edition+' library titles');
+  notify();return result;
+ });
  on('searchCatalog',request=>catalog.search(request||{}));
  on('clearCatalog',edition=>{const result=catalog.clear(edition);notify();return result;});
  on('getBrowsers',()=>browsers());

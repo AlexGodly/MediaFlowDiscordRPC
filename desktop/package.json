@@ -42,7 +42,8 @@
       "preload.cjs",
       "renderer-dist/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "importer.cjs"
     ],
     "asar": true,
     "win": {

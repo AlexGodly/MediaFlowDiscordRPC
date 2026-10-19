@@ -50,6 +50,16 @@ class Catalog{
   this.persist(req.edition);
   return {ok:true,count:titles.length};
  }
+ import(edition,records,source='MediaFlow export'){
+  if(!['personal','plus'].includes(edition))throw Error('Invalid edition');
+  if(!Array.isArray(records)||records.length>LIMIT)throw Error('Invalid import size');
+  const unique=new Map();
+  for(const raw of records){const x=normalize(raw);if(x)unique.set(x.id||x.title.toLocaleLowerCase(),x);}
+  const titles=[...unique.values()];
+  this.list[edition]=titles;
+  this.meta[edition]={at:Date.now(),siteVersion:'imported',count:titles.length,source:String(source).slice(0,100)};
+  this.pending.delete(edition);this.persist(edition);return {ok:true,count:titles.length,edition,source:this.meta[edition].source};
+ }
  persist(edition){
   fs.mkdirSync(this.dir,{recursive:true});
   const target=path.join(this.dir,edition+'.json'),tmp=target+'.tmp';
