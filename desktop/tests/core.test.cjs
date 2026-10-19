@@ -24,3 +24,22 @@ test('non-title pages retain their real counts and meaningful action',()=>{
  assert.equal(order.details,'Organizing Personal Order');
  assert.equal(order.state,'128 titles');
 });
+
+test('activity rules match title, edition and category without leaking to another edition',()=>{
+ const conf=merge(DEFAULTS,{rules:[{
+  id:'one',name:'Special Mentalist',enabled:true,priority:30,
+  match:{edition:'personal',titleContains:'mentalist',category:'TV Series'},
+  overrides:{detailsTemplate:'Currently watching {title}',smallImage:{mode:'none'},activityType:3}
+ }]});
+ const matching=compile({edition:'personal',view:'details',title:'The Mentalist',category:'TV Series'},conf);
+ assert.equal(matching.details,'Currently watching The Mentalist');assert.equal(matching.assets.small_image,undefined);
+ const noMatch=compile({edition:'plus',view:'details',title:'The Mentalist',category:'TV Series'},conf);
+ assert.equal(noMatch.assets.small_image,'mediaflow');
+});
+test('higher priority rule overrides overlapping lower priority template',()=>{
+ const c=merge(DEFAULTS,{rules:[
+  {id:'low',enabled:true,priority:1,match:{view:'details'},overrides:{detailsTemplate:'Low {title}'}},
+  {id:'high',enabled:true,priority:9,match:{view:'details'},overrides:{detailsTemplate:'High {title}'}}
+ ]});
+ assert.equal(compile({edition:'personal',view:'details',title:'X'},c).details,'High X');
+});
