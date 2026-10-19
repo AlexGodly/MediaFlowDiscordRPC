@@ -43,3 +43,16 @@ test('higher priority rule overrides overlapping lower priority template',()=>{
  ]});
  assert.equal(compile({edition:'personal',view:'details',title:'X'},c).details,'High X');
 });
+
+test('manual mode custom state takes effect and XP progress bar can be used as text',()=>{
+ const c=merge(DEFAULTS,{mode:'manual',show:{xp:true,progress:true},manual:{title:'The Mentalist',state:'{xpProgressBar}',xp:70,xpNext:100},stateTemplate:'{streakLine}'});
+ const p=compile({edition:'personal',view:'details',title:'ignored'},c);
+ assert.equal(p.name,'The Mentalist');
+ assert.equal(p.state,'███████░░░ 70%');
+});
+test('xp progress clamped to 0..100 and no progress when hidden',()=>{
+ const c=merge(DEFAULTS,{mode:'manual',show:{xp:true,progress:true},manual:{title:'Example',state:'{xpProgressBar}',xp:1000,xpNext:100}});
+ assert.equal(compile({edition:'personal',view:'details'},c).state,'██████████ 100%');
+ const off=merge(c,{show:{xp:false}});
+ assert.equal(compile({edition:'personal',view:'details'},off).state,'MediaFlow');
+});
