@@ -33,3 +33,7 @@
 - Personal library metadata now streams in opt-in chunks from its account snapshot into a private local searchable catalogue (up to 120,000 titles).
 - Plus library fallback uses only visible Plus DOM titles when its account snapshot cannot be safely distinguished from Personal on the shared origin; no cross-edition data is copied.
 - Plus page source currently identifies v437 even though its VERSION file is stale at 436. The compatibility baseline has been corrected.
+
+## Verification checkpoint
+
+The desktop pipeline now also exercises the Discord Windows named-pipe handshake and outgoing Rich Presence frame using a local test fixture. It does not represent verification with a real logged-in Discord desktop user. The release remains Beta.
