@@ -15,3 +15,12 @@ test('per-edition overrides can be added incrementally without wiping older fiel
  assert.equal(compile({edition:'personal',view:'details',title:'The Mentalist'},c2).assets.small_image,undefined);
  assert.equal(compile({edition:'plus',view:'details',title:'One Piece'},c2).assets.small_image,'mediaflow');
 });
+
+test('non-title pages retain their real counts and meaningful action',()=>{
+ const library=compile({edition:'personal',view:'library',details:'Browsing Library',state:'29,847 titles',largeText:'MediaFlow'},DEFAULTS);
+ assert.equal(library.details,'Browsing Library');
+ assert.equal(library.state,'29,847 titles');
+ const order=compile({edition:'plus',view:'order',details:'Organizing Personal Order',state:'128 titles',largeText:'MediaFlow'},DEFAULTS);
+ assert.equal(order.details,'Organizing Personal Order');
+ assert.equal(order.state,'128 titles');
+});
