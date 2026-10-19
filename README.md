@@ -1,6 +1,6 @@
 # MediaFlow Discord RPC — Presence Studio v20.507
 
-Windows desktop companion for **MediaFlow by Alex Godly — Personal Edition (v507)** and **MediaFlow Plus by Alex Godly — Public Edition (v436)**.
+Windows desktop companion for **MediaFlow by Alex Godly — Personal Edition (v507)** and **MediaFlow Plus by Alex Godly — Public Edition (v437)**.
 
 **Version convention:** v<RPC-project version>.<Personal MediaFlow compatibility baseline>. Plus has its own independently tracked baseline.
 
@@ -42,7 +42,7 @@ The application is **unsigned**. Windows SmartScreen may warn. Only download fro
 - Discord's native SET_ACTIVITY can use Watching/Playing/Listening/Competing types, but **Discord ultimately controls the application header and card rendering**. The display-name option is best-effort on this legacy IPC transport; it is not guaranteed to replace the Discord Developer application name.
 - All images can be selected locally for previews, but files are **not silently uploaded to public hosting**.
 - Web browsers control PWA installation prompts and unpacked-extension permissions. Presence Studio cannot override those controls.
-- The library picker supports opt-in local indexing of Personal account snapshots with search, filters, and pagination. Plus safely indexes visible titles only where an account-scoped export is unavailable. No direct Supabase credentials are copied to the app.
+- The library supports searchable local indexing with up to 120,000 titles and a tested 100,000-title scenario. Personal can sync an opted-in local snapshot; Plus can index safely visible titles. Both editions also support full local JSON/CSV library import via the Library screen. Only title metadata is retained locally, not authentication credentials or raw exports.
 - Compatibility checks can detect version changes; **breaking MediaFlow changes may require new extension/adapter releases**. Future compatibility cannot be guaranteed automatically.
 - Do not expect the optional account XP fields to be present if a particular MediaFlow page does not expose them through the current extension; manually set them in Manual mode when needed.
 
@@ -57,3 +57,7 @@ npm run package
 ```
 
 Windows GitHub Actions builds and validates a portable EXE and extension ZIP automatically. The release stays **Beta** until real Discord and Windows installation tests confirm all supported paths.
+
+## Latest v20.507 Beta update
+
+The latest desktop beta adds independent Personal/Plus library imports, page/category/title/status presence rules, text-based XP progress bars, improved title detail/edit/log detection, and safer bridge-origin checks. Manual image selection stores files privately for Studio preview; Discord still needs a publicly reachable HTTPS asset or registered application image. Browser and Discord API restrictions prevent a guarantee of fully automatic installation or arbitrary Discord application-name overrides using classic IPC. This is a Beta pending live Discord/PWA tests.
