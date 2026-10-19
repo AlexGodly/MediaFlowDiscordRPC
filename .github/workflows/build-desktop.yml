@@ -34,6 +34,8 @@ jobs:
         run: npm test
       - name: Build React renderer and typecheck
         run: npm run build
+      - name: Smoke test Electron renderer and local IPC on Windows
+        run: npm run smoke
       - name: Build true portable Windows EXE
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

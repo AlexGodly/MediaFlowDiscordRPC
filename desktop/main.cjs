@@ -276,11 +276,41 @@ function attach(){
  on('pause',()=>setConfig({mode:'off'}));on('resume',()=>setConfig({mode:'automatic'}));
  on('restartBridge',()=>{server?.close();bridgeStatus='Restarting';bridge();return state();});
 }
+async function runWindowSmoke(){
+ const timeout=setTimeout(()=>{console.error('SMOKE FAIL: render timeout');app.exit(1)},22000);
+ try{
+  const result=await window.webContents.executeJavaScript(`(async()=>{
+    const sleep=n=>new Promise(resolve=>setTimeout(resolve,n));
+    await sleep(650);
+    const pages=['Overview','Presence Studio','Activity Rules','My Library','Artwork Studio','Presets','Themes & Appearance','Editions & PWA','Settings'];
+    const misses=[];
+    for(const label of pages){
+      const button=[...document.querySelectorAll('.nav-item')].find(x=>x.textContent.trim()===label);
+      if(!button){misses.push('missing navigation '+label);continue;}
+      button.click();await sleep(170);
+      const title=document.querySelector('.topbar h1')?.textContent?.trim();
+      if(title!==label)misses.push('page '+label+' got '+title);
+    }
+    try{
+      await window.studio.saveConfig({mode:'manual',manual:{title:'The Mentalist',action:'Watching',edition:'personal'}});
+      const data=await window.studio.getState();
+      if(data?.preview?.name!=='The Mentalist')misses.push('manual mode preview wrong name');
+      await window.studio.saveConfig({mode:'off'});
+      const off=await window.studio.getState();
+      if(off.preview!==null)misses.push('off mode did not clear preview');
+    }catch(e){misses.push('IPC: '+e.message)}
+    return {ok:misses.length===0,errors:misses}
+   })()`);
+  console.log('SMOKE RESULT',JSON.stringify(result));
+  clearTimeout(timeout);app.exit(result?.ok?0:1);
+ }catch(err){console.error('SMOKE ERROR',err);clearTimeout(timeout);app.exit(1);}
+}
 if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',show);
  app.whenReady().then(()=>{
   load();catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
+  if(process.env.MEDIAFLOW_STUDIO_SMOKE==='1')window.webContents.once('did-finish-load',runWindowSmoke);
   discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
   log('Presence Studio v20.507 started');
   const interval=setInterval(()=>{if(config.updates?.checkAutomatically)checkForUpdates().catch(()=>{});},6*60*60*1000);interval.unref();
