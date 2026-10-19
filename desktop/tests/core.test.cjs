@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {DEFAULTS,EDITIONS,merge,compile,parseWire,safeAsset}=require('../core.cjs');
-test('edition versions',()=>{assert.equal(EDITIONS.personal.version,507);assert.equal(EDITIONS.plus.version,436);});
+test('edition versions',()=>{assert.equal(EDITIONS.personal.version,507);assert.equal(EDITIONS.plus.version,437);});
 test('independent artwork, no clickable links',()=>{const p=compile({edition:'personal',view:'details',title:'The Mentalist',cover:'https://example.org/poster.jpg'},DEFAULTS);assert.equal(p.assets.large_image,'https://example.org/poster.jpg');assert.equal(p.assets.small_image,'mediaflow');assert.equal(p.name,'The Mentalist');assert.ok(!p.buttons&&!p.assets.small_url);});
 test('small-image alternatives',()=>{const e={edition:'plus',view:'community',profileImage:'https://example.org/me.png'};assert.equal(compile(e,merge(DEFAULTS,{smallImage:{mode:'account'}})).assets.small_image,'https://example.org/me.png');assert.equal(compile(e,merge(DEFAULTS,{smallImage:{mode:'none'}})).assets.small_image,undefined);assert.equal(compile(e,merge(DEFAULTS,{smallImage:{mode:'custom',url:'https://x.test/img.jpg'}})).assets.small_image,'https://x.test/img.jpg');});
 test('visibility and mode',()=>{assert.equal(compile({edition:'personal',view:'logging'},merge(DEFAULTS,{when:{logging:false}})),null);assert.equal(compile({edition:'personal',view:'other'},merge(DEFAULTS,{mode:'off'})),null);});
