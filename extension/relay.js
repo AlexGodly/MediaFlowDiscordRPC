@@ -597,6 +597,13 @@
         /detail|view/.test(context) ? 'Viewing' : /read/.test(context) ? 'Reading' : 'Watching';
       const candidateTitle = String(dialog?.querySelector('.title-name,.media-title,.detail-title,.item-title')?.textContent || '').trim();
       payload.title = (candidateTitle || (payload.largeText !== 'MediaFlow' && payload.largeText !== 'MediaFlow Plus' ? payload.largeText : '')).slice(0,120);
+      const cataloged = cachedLibraryByTitle.get(clean(payload.title).toLowerCase()) || null;
+      payload.category = clean(cataloged?.category || dialog?.querySelector('[data-category]')?.getAttribute('data-category') || '');
+      payload.status = clean(cataloged?.status || dialog?.querySelector('[data-status]')?.getAttribute('data-status') || '');
+      payload.progress = Number(cataloged?.progress) || 0;
+      payload.total = Number(cataloged?.total) || 0;
+      payload.siteVersion = clean(document.querySelector('meta[name="mediaflow-version"]')?.content || '', 20);
+
       if (dialogHeading && /edit|log|detail|history|category|collection/i.test(dialogHeading)) {
         payload.view = /edit/i.test(dialogHeading) ? 'editing' : /log/i.test(dialogHeading) ? 'logging' : 'details';
         if (payload.title) payload.details = payload.action + ' ' + payload.title;

@@ -25,9 +25,9 @@ function applyRules(c,entry){
  for(const rule of matching.slice().reverse()){
   const o=rule.overrides||{};
   for(const name of ['detailsTemplate','stateTemplate','displayName','customName','activityType','largeImage','smallImage','show','timestamps']){
-   if(!(name in o))continue;
+   if(!(name in o) || o[name]===undefined || o[name]===null || o[name]==='')continue;
    if(['largeImage','smallImage','show','timestamps'].includes(name)&&o[name]&&typeof o[name]==='object')
-    result[name]={...result[name],...o[name]};
+    result[name]={...result[name],...Object.fromEntries(Object.entries(o[name]).filter(([key,value])=>value!==undefined&&value!==null&&value!==''))};
    else result[name]=o[name];
   }
  }
@@ -38,5 +38,5 @@ function compile(entry,config){if(!entry)return null;const c=applyRules(editionS
  {end:Math.floor((startedMs+Math.max(1,Math.min(1440,Number(c.timestamps?.countdownMinutes)||60))*60000)/1000)}:
  {start:Math.floor(startedMs/1000)};
  return {type:[0,2,3,5].includes(Number(c.activityType))?Number(c.activityType):3,name,details,state,assets,instance:false,...(timestamps?{timestamps}:{})};}
-function parseWire(wire){const s=String(wire||'');if(s==='MF5|C')return {kind:'clear'};const p=s.split('|');if(p[0]!=='MF5'||p[1]!=='P'||p.length<10||p.length>22||s.length>24000)return null;try{const get=i=>Buffer.from(p[i]||'','base64').toString('utf8').slice(0,[7,10,13].includes(i)?2048:256);const edition=get(9);if(!EDITIONS[edition])return null;return {kind:'presence',entry:{details:get(2),state:get(3),view:get(4)||'other',heading:get(5),source:get(6),largeImage:get(7),largeText:get(8),edition,smallImage:get(10),smallText:get(11),username:get(12),profileImage:get(13),title:get(14)||get(8),action:get(15),level:Number(get(16))||0,streak:Number(get(17))||0,xp:Number(get(18))||0,xpNext:Number(get(19))||0,themeAccent:get(20),themeMode:get(21),receivedAt:Date.now()}};}catch{return null;}}
+function parseWire(wire){const s=String(wire||'');if(s==='MF5|C')return {kind:'clear'};const p=s.split('|');if(p[0]!=='MF5'||p[1]!=='P'||p.length<10||p.length>27||s.length>24000)return null;try{const get=i=>Buffer.from(p[i]||'','base64').toString('utf8').slice(0,[7,10,13].includes(i)?2048:256);const edition=get(9);if(!EDITIONS[edition])return null;return {kind:'presence',entry:{details:get(2),state:get(3),view:get(4)||'other',heading:get(5),source:get(6),largeImage:get(7),largeText:get(8),edition,smallImage:get(10),smallText:get(11),username:get(12),profileImage:get(13),title:get(14)||get(8),action:get(15),level:Number(get(16))||0,streak:Number(get(17))||0,xp:Number(get(18))||0,xpNext:Number(get(19))||0,themeAccent:get(20),themeMode:get(21),siteVersion:get(22),category:get(23),status:get(24),progress:get(25),total:get(26),receivedAt:Date.now()}};}catch{return null;}}
 module.exports={EDITIONS,DEFAULTS,merge,safeText,safeAsset,interpolate,editionSettings,applyRules,compile,parseWire};
