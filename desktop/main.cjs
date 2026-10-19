@@ -112,6 +112,19 @@ function bridge(){
  server.on('error',err=>{bridgeStatus='Bridge error: '+err.message;log(bridgeStatus);});
  server.listen(PORT,'127.0.0.1',()=>{bridgeStatus='Listening on 127.0.0.1:'+PORT;log('Browser bridge ready');});
 }
+function updatePreparedExtension(){
+ const bundled=path.join(process.resourcesPath,'mediaflow-extension');
+ const destination=path.join(app.getPath('userData'),'BrowserExtension');
+ try{
+  if(!fs.existsSync(path.join(destination,'manifest.json'))||!fs.existsSync(path.join(bundled,'manifest.json')))return;
+  const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const current=path.join(destination,'service-worker.js'),source=path.join(bundled,'service-worker.js');
+  if(!fs.existsSync(current)||hash(current)!==hash(source)){
+   fs.cpSync(bundled,destination,{recursive:true,force:true});
+   log('Browser extension files updated automatically; reload the extension from browser settings.');
+  }
+ }catch(err){log('Extension auto-update skipped: '+err.message);}
+}
 function asset(name){return path.join(__dirname,'assets',name);}
 function createWindow(){
  window=new BrowserWindow({width:1440,height:900,minWidth:740,minHeight:600,show:false,backgroundColor:'#0e101d',title:APP,autoHideMenuBar:true,icon:asset('mediaflow.png'),
@@ -310,6 +323,7 @@ else{
  app.on('second-instance',show);
  app.whenReady().then(()=>{
   load();catalog=new Catalog(path.join(app.getPath('userData'),'catalog'));attach();discord=new DiscordIpc();bridge();createWindow();createTray();
+  updatePreparedExtension();
   if(process.env.MEDIAFLOW_STUDIO_SMOKE==='1')window.webContents.once('did-finish-load',runWindowSmoke);
   discord.setActivity(rendered());if(config.launcher.startWithWindows)app.setLoginItemSettings({openAtLogin:true,path:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});
   log('Presence Studio v20.507 started');
