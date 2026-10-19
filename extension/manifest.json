@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MediaFlow Discord RPC Bridge",
-  "version": "1.12.0",
-  "description": "MediaFlow Discord RPC bridge with v12 bridge protocol with stable dynamic cover art and prefix-free streak/level status.",
+  "name": "MediaFlow Presence Studio Bridge",
+  "version": "20.507.0",
+  "description": "MediaFlow Personal + MediaFlow Plus desktop Rich Presence companion bridge.",
   "minimum_chrome_version": "116",
   "permissions": [
     "tabs",
@@ -10,6 +10,7 @@
   ],
   "host_permissions": [
     "https://alexgodly.github.io/MediaFlow/*",
+    "https://alexgodly.github.io/MediaFlowPlus/*",
     "http://127.0.0.1/*"
   ],
   "background": {
@@ -18,7 +19,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://alexgodly.github.io/MediaFlow/*"
+        "https://alexgodly.github.io/MediaFlow/*",
+        "https://alexgodly.github.io/MediaFlowPlus/*"
       ],
       "js": [
         "relay.js"

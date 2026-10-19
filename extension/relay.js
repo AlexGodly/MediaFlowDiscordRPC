@@ -1,8 +1,10 @@
 (() => {
   'use strict';
 
-  if (window.__MEDIAFLOW_RPC_RELAY_V11__) return;
-  window.__MEDIAFLOW_RPC_RELAY_V11__ = true;
+  if (window.__MEDIAFLOW_RPC_RELAY_V20__) return;
+  window.__MEDIAFLOW_RPC_RELAY_V20__ = true;
+  const IS_PLUS = location.pathname.startsWith('/MediaFlowPlus/');
+  const EDITION = IS_PLUS ? 'plus' : 'personal';
 
   const LEGACY_CACHE_KEY = 'mf_cloud_cache_v1';
   const ACCOUNT_CACHE_PREFIX = 'mf_cloud_cache_v2_';
@@ -47,6 +49,9 @@
   }
 
   function selectCacheRaw() {
+    // Both editions use the same github.io origin. Never read Personal account
+    // recovery snapshots from Plus; Plus uses its own authenticated UI state.
+    if (IS_PLUS) return null;
     // v9: choose the newest valid recovery snapshot instead of blindly trusting
     // the legacy key. On very large libraries an old legacy snapshot can remain
     // after localStorage quota errors, while the account-scoped cache may still
@@ -115,6 +120,10 @@
     const t = clean(value).toLowerCase();
     if (!t) return '';
     if (t.includes('library history')) return 'libraryhistory';
+    if (t.includes('community') || t.includes('friend') || t.includes('inbox')) return 'community';
+    if (t.includes('collection')) return 'collections';
+    if (t.includes('logging') || t.includes('advanced log')) return 'logging';
+    if (t.includes('recommendation')) return 'recommendations';
     if (t === 'today' || t === 'dashboard' || t.includes('dashboard')) return 'dashboard';
     if (t === 'library' || t.startsWith('library ')) return 'library';
     if (t === 'history' || (t.includes('history') && !t.includes('library'))) return 'history';
@@ -522,6 +531,14 @@
         const p = dashboardPresence(state);
         return { kind: 'presence', ...p, ...debug };
       }
+      case 'community':
+        return { kind: 'presence', details: 'Exploring the Community', state: IS_PLUS ? 'MediaFlow Plus' : streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow Plus', ...debug };
+      case 'collections':
+        return { kind: 'presence', details: 'Browsing Collections', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
+      case 'logging':
+        return { kind: 'presence', details: 'Advanced Logging', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
+      case 'recommendations':
+        return { kind: 'presence', details: 'Checking Recommendations', state: streakLevelLine(state), largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'library':
         return { kind: 'presence', details: 'Browsing Library', state: libraryCountText, largeImage: 'mediaflow', largeText: 'MediaFlow', ...debug };
       case 'order':
@@ -553,6 +570,11 @@
     try { payload = buildPresence(); }
     catch (_) { payload = { kind: 'clear' }; }
 
+    if (payload && payload.kind === 'presence') {
+      payload.edition = EDITION;
+      payload.smallImage = 'mediaflow';
+      payload.smallText = IS_PLUS ? 'MediaFlow Plus by Alex Godly' : 'MediaFlow by Alex Godly';
+    }
     const signature = JSON.stringify(payload);
     const now = Date.now();
     if (!force && signature === lastSignature && now - lastSentAt < 5000) return;
